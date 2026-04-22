@@ -1,0 +1,8 @@
+{
+  "watch": ["src", "index.js"],
+  "ext": "js,json",
+  "exec": "node index.js",
+  "events": {
+    "start": "npm run deploy:commands:global -- --help-only"
+  }
+}

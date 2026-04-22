@@ -1,0 +1,89 @@
+<%- include('partials/head', { title: guild.name }) %>
+<body>
+  <%- include('partials/nav') %>
+
+  <div class="page">
+    <div class="server-detail">
+
+      <div class="breadcrumb">
+        <a href="/dashboard">Dashboard</a>
+        <span class="breadcrumb-sep">/</span>
+        <span class="breadcrumb-current"><%= guild.name %></span>
+      </div>
+
+      <%
+        const iconUrl = guild.icon
+          ? `https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.${guild.icon.startsWith('a_') ? 'gif' : 'png'}?size=256`
+          : null;
+      %>
+
+      <div class="server-hero">
+        <div class="server-hero-icon-wrap">
+          <% if (iconUrl) { %>
+            <img src="<%= iconUrl %>" alt="<%= guild.name %>" class="server-hero-icon">
+          <% } else { %>
+            <div class="server-hero-placeholder"><%= guild.name.charAt(0).toUpperCase() %></div>
+          <% } %>
+          <div class="server-hero-glow"></div>
+        </div>
+        <div class="server-hero-info">
+          <div class="server-hero-badge">Administrator</div>
+          <h1 class="server-hero-name"><%= guild.name %></h1>
+          <p class="server-hero-sub">Configure commands and settings for this server.</p>
+        </div>
+      </div>
+
+      <!-- Commands Section -->
+      <section class="commands-section">
+        <div class="commands-section-header">
+          <div>
+            <h2 class="commands-section-title">Commands</h2>
+            <p class="commands-section-sub">Enable commands for your server. Members only see commands you enable.</p>
+          </div>
+          <input type="text" id="commandSearch" class="commands-search" placeholder="Search commands…" aria-label="Search commands">
+        </div>
+
+        <div class="category-tabs" id="categoryTabs">
+          <button class="cat-tab active" data-cat="all">All</button>
+          <button class="cat-tab" data-cat="Moderation">Moderation</button>
+          <button class="cat-tab" data-cat="Admin">Admin</button>
+          <button class="cat-tab" data-cat="General">General</button>
+        </div>
+
+        <div id="commandsList" class="commands-list">
+          <div class="commands-loading">
+            <div class="spinner"></div>
+            Loading commands…
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <!-- INFO MODAL -->
+  <div id="infoModalBackdrop" class="modal-backdrop" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="infoModalTitle">
+      <button class="modal-close" id="infoModalClose" aria-label="Close">✕</button>
+      <div id="infoModalContent"></div>
+    </div>
+  </div>
+
+  <!-- SETTINGS PANEL -->
+  <div id="settingsBackdrop" class="panel-backdrop" aria-hidden="true"></div>
+  <aside id="settingsPanel" class="settings-panel" aria-label="Command settings">
+    <div class="settings-panel-header">
+      <h3 class="settings-panel-title" id="settingsPanelTitle">Command Settings</h3>
+      <button class="modal-close" id="settingsPanelClose" aria-label="Close">✕</button>
+    </div>
+    <div class="settings-panel-body" id="settingsPanelBody">
+      <div class="commands-loading"><div class="spinner"></div></div>
+    </div>
+  </aside>
+
+  <div id="pageData" data-guild-id="<%= guild.id %>" style="display:none"></div>
+  <%- include('partials/footer') %>
+  <script src="/js/app.js"></script>
+  <script src="/js/server.js"></script>
+</body>
+</html>

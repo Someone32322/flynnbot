@@ -1,0 +1,25 @@
+<nav class="nav" id="nav">
+  <a href="/" class="nav-logo">
+    <div class="nav-logo-icon">⚡</div>
+    FlynnBot
+  </a>
+
+  <div class="nav-actions">
+    <% if (user) { %>
+      <a href="/dashboard" class="btn btn-ghost">Dashboard</a>
+      <%
+        const avatarUrl = user.avatar
+          ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=64`
+          : `https://cdn.discordapp.com/embed/avatars/0.png`;
+      %>
+      <div class="user-badge">
+        <img src="<%= avatarUrl %>" alt="<%= user.username %>" class="user-avatar">
+        <span class="user-name"><%= user.username %></span>
+      </div>
+      <a href="/api/auth/logout" class="btn btn-ghost">Logout</a>
+    <% } else { %>
+      <a href="https://discord.com/oauth2/authorize?client_id=<%= clientId %>&permissions=8&scope=bot+applications.commands" target="_blank" rel="noopener noreferrer" class="btn btn-ghost">Add to Discord</a>
+      <a href="/api/auth/login" class="btn btn-primary">Login</a>
+    <% } %>
+  </div>
+</nav>

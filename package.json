@@ -1,0 +1,24 @@
+{
+  "name": "flynnbot-2.0",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Monorepo for Discord bot and dashboard",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @flynnbot/bot --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "start": "npm run start --workspace @flynnbot/bot --if-present",
+    "dashboard": "npm run start --workspace @flynnbot/dashboard",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "devDependencies": {
+    "eslint": "^9.25.1",
+    "prettier": "^3.3.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}
