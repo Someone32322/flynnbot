@@ -87,7 +87,22 @@ app.use((err, req, res, next) => {
   res.status(500).render('error', { code: 500, message: 'An unexpected error occurred.' });
 });
 
-app.listen(PORT, async () => {
+process.on('unhandledRejection', (reason) => {
+  console.error('[Dashboard] Unhandled rejection:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[Dashboard] Uncaught exception:', err);
+});
+
+async function start() {
   await connectDb();
-  console.log(`\n  Dashboard → http://localhost:${PORT}\n`);
+  app.listen(PORT, () => {
+    console.log(`\n  Dashboard → http://localhost:${PORT}\n`);
+  });
+}
+
+start().catch((err) => {
+  console.error('[Dashboard] Failed to start:', err);
+  process.exit(1);
 });

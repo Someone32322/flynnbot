@@ -1,6 +1,7 @@
 const { GuildConfig } = require("../models/GuildConfig");
 const { ModerationCase } = require("../models/ModerationCase");
 const { TimedAction } = require("../models/TimedAction");
+const { ScheduledMessage } = require("../models/ScheduledMessage");
 const { closeCase, logToAuditChannel } = require("./moderation");
 
 async function processTimedAction(client, actionDocument) {
@@ -96,12 +97,237 @@ function startScheduler(client) {
     return;
   }
 
+  // Existing moderation timed-action scheduler
   const tick = () => processDueActions(client).catch((error) => console.error("Timed moderation processing failed:", error));
   tick();
   client.moderationScheduler = setInterval(tick, 15_000);
   client.moderationScheduler.unref();
+
+  // Message Builder scheduler — scheduled/repeat messages
+  const msgTick = () => runMessageScheduler(client).catch((err) => console.error("[MsgScheduler] Error:", err));
+  setTimeout(msgTick, 5_000);  // initial run after 5s on startup
+  const msgInterval = setInterval(msgTick, 60_000);
+  msgInterval.unref();
+
+  console.log("[Scheduler] Message scheduler started (60-second interval)");
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  Message Builder scheduler helpers
+// ══════════════════════════════════════════════════════════════════
+
+/** Replace {variables} in a string with context values */
+function substituteVars(text, ctx) {
+  if (!text) return text;
+  ctx = ctx || {};
+
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) + ' UTC';
+
+  return text
+    .replace(/\{user\}/gi,        ctx.user   ? `<@${ctx.user.id}>` : '')
+    .replace(/\{username\}/gi,    ctx.member?.displayName ?? ctx.user?.username ?? 'User')
+    .replace(/\{server\}/gi,      ctx.guild?.name      ?? '')
+    .replace(/\{serverid\}/gi,    ctx.guild?.id        ?? '')
+    .replace(/\{membercount\}/gi, String(ctx.guild?.memberCount ?? 0))
+    .replace(/\{date\}/gi,        dateStr)
+    .replace(/\{time\}/gi,        timeStr)
+    .replace(/\{channel\}/gi,     ctx.channel ? `<#${ctx.channel.id}>` : '');
+}
+
+/** Convert a stored embed object into a Discord.js-compatible plain object */
+function buildEmbedObj(emb, ctx) {
+  const sub = (v) => substituteVars(v, ctx || {});
+
+  const obj = {};
+  if (emb.title)       obj.title       = sub(emb.title);
+  if (emb.description) obj.description = sub(emb.description);
+  if (emb.url)         obj.url         = emb.url;
+  if (emb.color !== undefined && emb.color !== null) obj.color = emb.color;
+
+  if (emb.authorName) {
+    obj.author = { name: sub(emb.authorName) };
+    if (emb.authorIcon) obj.author.iconURL = emb.authorIcon;
+    if (emb.authorUrl)  obj.author.url     = emb.authorUrl;
+  }
+
+  if (emb.footerText) {
+    obj.footer = { text: sub(emb.footerText) };
+    if (emb.footerIcon) obj.footer.iconURL = emb.footerIcon;
+  }
+
+  if (emb.imageUrl)  obj.image     = { url: emb.imageUrl };
+  if (emb.thumbnail) obj.thumbnail = { url: emb.thumbnail };
+  if (emb.timestamp) obj.timestamp = new Date();
+
+  if (emb.fields?.length) {
+    obj.fields = emb.fields
+      .filter((f) => f.name && f.value)
+      .map((f) => ({ name: sub(f.name), value: sub(f.value), inline: f.inline || false }));
+  }
+
+  return obj;
+}
+
+/** Build the full send payload for a ScheduledMessage doc */
+function buildMessagePayload(msg, ctx) {
+  ctx = ctx || {};
+  const content = substituteVars(msg.content || '', ctx) || undefined;
+  const embeds  = (msg.embeds || [])
+    .map((emb) => buildEmbedObj(emb, ctx))
+    .filter((e) => Object.keys(e).length > 0);
+
+  const payload = {};
+  if (content)       payload.content = content;
+  if (embeds.length) payload.embeds  = embeds;
+  return payload;
+}
+
+/** Safely send to a text channel */
+async function sendToChannel(client, channelId, payload) {
+  const channel = await client.channels.fetch(channelId).catch(() => null);
+  if (!channel || !channel.isTextBased()) {
+    console.warn(`[MsgScheduler] Channel ${channelId} not found or not text-based`);
+    return null;
+  }
+  return channel.send(payload).catch((err) => {
+    console.error(`[MsgScheduler] Failed to send to ${channelId}:`, err.message);
+    return null;
+  });
+}
+
+/** Run pending schedule_once / schedule_repeat messages */
+async function runMessageScheduler(client) {
+  const now = new Date();
+
+  const pending = await ScheduledMessage.find({
+    'delivery.type':            { $in: ['schedule_once', 'schedule_repeat'] },
+    'delivery.scheduleEnabled': true,
+    'delivery.nextRun':         { $lte: now },
+  }).lean();
+
+  for (const msgDoc of pending) {
+    // Re-fetch for atomic write
+    const msg = await ScheduledMessage.findById(msgDoc._id);
+    if (!msg || !msg.delivery.scheduleEnabled) continue;
+    if (!msg.delivery.nextRun || msg.delivery.nextRun > now) continue;
+
+    const channelId = msg.delivery.channelId;
+    if (!channelId) {
+      msg.delivery.scheduleEnabled = false;
+      msg.markModified('delivery');
+      await msg.save().catch(() => {});
+      continue;
+    }
+
+    await sendToChannel(client, channelId, buildMessagePayload(msg));
+
+    msg.delivery.lastRun = now;
+    if (msg.delivery.type === 'schedule_repeat' && msg.delivery.intervalMins) {
+      msg.delivery.nextRun = new Date(now.getTime() + msg.delivery.intervalMins * 60 * 1000);
+    } else {
+      msg.delivery.scheduleEnabled = false;
+      msg.delivery.nextRun         = null;
+    }
+
+    msg.markModified('delivery');
+    await msg.save().catch((err) => console.error('[MsgScheduler] Save error:', err.message));
+  }
+}
+
+/**
+ * Called from messageCreate.js on every non-bot guild message.
+ * Re-posts the sticky message for the channel if one is configured.
+ */
+async function handleStickyForChannel(client, message) {
+  if (!message.guild || message.author.bot) return;
+
+  const sticky = await ScheduledMessage.findOne({
+    guildId:              message.guild.id,
+    'delivery.type':      'sticky',
+    'delivery.channelId': message.channel.id,
+  }).catch(() => null);
+
+  if (!sticky) return;
+
+  // Delete previous sticky post if still in channel
+  if (sticky.postedMessageId) {
+    try {
+      const old = await message.channel.messages.fetch(sticky.postedMessageId);
+      if (old && old.author.id === client.user.id) await old.delete();
+    } catch {
+      // Already gone — fine
+    }
+  }
+
+  const payload = buildMessagePayload(sticky);
+  if (!payload.content && !payload.embeds?.length) return;
+
+  const sent = await message.channel.send(payload).catch(() => null);
+  if (sent) {
+    sticky.postedMessageId = sent.id;
+    sticky.postedChannelId = message.channel.id;
+    sticky.markModified('postedMessageId');
+    await sticky.save().catch(() => {});
+  }
+}
+
+/**
+ * Called from messageCreate.js on every non-bot guild message.
+ * Checks command triggers and responds if matched.
+ */
+async function handleCommandTrigger(client, message) {
+  if (!message.guild || message.author.bot) return;
+
+  const raw = message.content.trim();
+  if (!raw) return;
+
+  const triggers = await ScheduledMessage.find({
+    guildId:         message.guild.id,
+    'delivery.type': 'command',
+  }).lean().catch(() => []);
+
+  for (const msg of triggers) {
+    const triggerWord = msg.delivery?.commandTrigger?.trim();
+    if (!triggerWord) continue;
+
+    const lowerRaw     = raw.toLowerCase();
+    const lowerTrigger = triggerWord.toLowerCase();
+
+    if (lowerRaw !== lowerTrigger && !lowerRaw.startsWith(lowerTrigger + ' ')) continue;
+
+    // Check required role
+    const requiredRoleId = msg.delivery.commandRequiredRoleId;
+    if (requiredRoleId) {
+      const member = message.member
+        || await message.guild.members.fetch(message.author.id).catch(() => null);
+      if (!member?.roles.cache.has(requiredRoleId)) continue;
+    }
+
+    const ctx = {
+      user:    message.author,
+      member:  message.member,
+      guild:   message.guild,
+      channel: message.channel,
+    };
+
+    const payload = buildMessagePayload(msg, ctx);
+    if (!payload.content && !payload.embeds?.length) continue;
+
+    const targetChannelId = msg.delivery.channelId;
+    if (targetChannelId && targetChannelId !== message.channel.id) {
+      await sendToChannel(client, targetChannelId, payload);
+    } else {
+      await message.channel.send(payload).catch(() => {});
+    }
+  }
 }
 
 module.exports = {
   startScheduler,
+  handleStickyForChannel,
+  handleCommandTrigger,
+  buildMessagePayload,
+  buildEmbedObj,
 };

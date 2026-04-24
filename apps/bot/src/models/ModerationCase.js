@@ -15,9 +15,27 @@ const moderationCaseSchema = new mongoose.Schema(
     expiresAt: { type: Date, default: null, index: true },
     endedAt: { type: Date, default: null },
     removedAt: { type: Date, default: null },
+    removedById: { type: String, default: null },
+    removedByTag: { type: String, default: null },
     removedReason: { type: String, default: null },
     dmDelivered: { type: Boolean, default: false },
     metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
+    proof: {
+      type: [
+        new mongoose.Schema(
+          {
+            proofId:    { type: String, required: true },
+            type:       { type: String, enum: ['link', 'attachment', 'text'], default: 'link' },
+            value:      { type: String, required: true },
+            addedById:  { type: String, required: true },
+            addedByTag: { type: String, default: null },
+            addedAt:    { type: Date, default: Date.now },
+          },
+          { _id: false }
+        ),
+      ],
+      default: [],
+    },
   },
   {
     timestamps: true,

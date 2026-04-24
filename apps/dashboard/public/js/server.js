@@ -24,6 +24,7 @@
   /*  Bootstrap                                                           */
   /* ------------------------------------------------------------------ */
   document.addEventListener('DOMContentLoaded', () => {
+    initSectionNav();
     loadCommands();
     bindCategoryTabs();
     bindSearch();
@@ -52,6 +53,8 @@
     try {
       allCommands = await apiFetch(`/guild/${GUILD_ID}/commands`);
       renderCommands();
+      updateSidebarBadge();
+      updateHomeStats();
     } catch (err) {
       document.getElementById('commandsList').innerHTML =
         `<div class="commands-loading" style="color:#f87171">Failed to load commands: ${escHtml(err.message)}</div>`;
@@ -508,6 +511,7 @@
     el.setAttribute('aria-hidden', 'false');
     el.classList.add('open');
     document.body.style.overflow = 'hidden';
+    document.getElementById('dashMain')?.classList.add('scroll-locked');
   }
 
   function closeModal(id) {
@@ -515,6 +519,7 @@
     el.setAttribute('aria-hidden', 'true');
     el.classList.remove('open');
     document.body.style.overflow = '';
+    document.getElementById('dashMain')?.classList.remove('scroll-locked');
   }
 
   function bindModalClose() {
@@ -538,6 +543,7 @@
     document.getElementById('settingsBackdrop').classList.add('open');
     document.getElementById('settingsBackdrop').setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
+    document.getElementById('dashMain')?.classList.add('scroll-locked');
   }
 
   function closePanel() {
@@ -545,6 +551,7 @@
     document.getElementById('settingsBackdrop').classList.remove('open');
     document.getElementById('settingsBackdrop').setAttribute('aria-hidden', 'true');
     document.body.style.overflow = '';
+    document.getElementById('dashMain')?.classList.remove('scroll-locked');
     activeSettingsCmd = null;
   }
 
@@ -586,4 +593,87 @@
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
   }
+
+  /* ------------------------------------------------------------------ */
+  /*  Section navigation                                                  */
+  /* ------------------------------------------------------------------ */
+  function initSectionNav() {
+    const hash = window.location.hash.replace('#', '');
+    const valid = ['home', 'commands', 'logging', 'embeds', 'reaction-roles', 'moderation', 'welcome', 'leveling', 'automod'];
+    const initial = valid.includes(hash) ? hash : 'home';
+
+    document.querySelectorAll('.sidebar-nav-item[data-section]').forEach((btn) => {
+      btn.addEventListener('click', () => switchSection(btn.dataset.section));
+    });
+
+    document.querySelectorAll('.home-card[data-goto]').forEach((card) => {
+      card.addEventListener('click', () => switchSection(card.dataset.goto));
+    });
+
+    switchSection(initial, false);
+  }
+
+  function switchSection(name, animate = true) {
+    document.querySelectorAll('.dash-section').forEach((sec) => {
+      if (sec.dataset.section === name) {
+        sec.style.display = '';
+        if (animate) {
+          sec.classList.remove('section-entering');
+          sec.offsetHeight; // reflow
+          sec.classList.add('section-entering');
+        }
+      } else {
+        sec.style.display = 'none';
+      }
+    });
+
+    document.querySelectorAll('.sidebar-nav-item[data-section]').forEach((item) => {
+      item.classList.toggle('active', item.dataset.section === name);
+    });
+
+    history.replaceState(null, '', `#${name}`);
+    const dashMain = document.getElementById('dashMain');
+    if (dashMain) dashMain.scrollTo({ top: 0, behavior: 'smooth' });
+
+    // Notify other modules that a section was activated
+    document.dispatchEvent(new CustomEvent('sectionActivated', { detail: { section: name } }));
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  Home page stats                                                     */
+  /* ------------------------------------------------------------------ */
+  function updateSidebarBadge() {
+    const enabled = allCommands.filter((c) => c.settings.enabled).length;
+    const badge = document.getElementById('sidebar-cmd-count');
+    if (badge) badge.textContent = enabled > 0 ? String(enabled) : '';
+  }
+
+  function updateHomeStats() {
+    const enabled = allCommands.filter((c) => c.settings.enabled).length;
+    const total = allCommands.length;
+    const cmdStats = document.getElementById('home-cmd-stats');
+    if (cmdStats) cmdStats.textContent = `${enabled} of ${total} commands enabled`;
+
+    // Only fetch prefix config if not already cached
+    const configPromise = guildConfig
+      ? Promise.resolve(guildConfig)
+      : apiFetch(`/guild/${GUILD_ID}/config`).then((d) => { guildConfig = d; return d; });
+
+    configPromise.then((cfg) => {
+      const el = document.getElementById('home-prefix-stats');
+      if (!el) return;
+      if (cfg.prefixEnabled && cfg.prefixes?.length) {
+        const count = cfg.prefixes.length;
+        el.textContent = `Enabled · ${count} prefix${count !== 1 ? 'es' : ''} configured`;
+      } else if (cfg.prefixEnabled) {
+        el.textContent = 'Enabled · No prefixes set';
+      } else {
+        el.textContent = 'Disabled';
+      }
+    }).catch(() => {
+      const el = document.getElementById('home-prefix-stats');
+      if (el) el.textContent = '—';
+    });
+  }
+
 })();

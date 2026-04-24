@@ -22,7 +22,7 @@ module.exports = {
     .setDescription("Mute a user with a native Discord timeout.")
     .addUserOption((option) => option.setName("user").setDescription("Member to mute").setRequired(true))
     .addStringOption((option) => option.setName("time").setDescription("Duration like 1h or 2d").setRequired(false))
-    .addStringOption((option) => option.setName("reason").setDescription("Mute reason").setRequired(false)),
+    .addStringOption((option) => option.setName("reason").setDescription("Mute reason").setRequired(false).setAutocomplete(true)),
   async execute(interaction) {
     const guildConfig = await requireModeratorAccess(interaction);
     if (!guildConfig) {
@@ -83,5 +83,14 @@ module.exports = {
     await interaction.reply(
       buildStaffReply("mute", { targetUser: target.targetUser, caseDocument, dmResult, defaultDuration: !parsedDuration })
     );
+  },
+  async autocomplete(interaction) {
+    const { PredefinedReasons } = require('../../models/PredefinedReasons');
+    const focused = interaction.options.getFocused(true);
+    if (focused.name !== 'reason') return;
+    const doc = await PredefinedReasons.findOne({ guildId: interaction.guildId, action: 'mute' }).lean().catch(() => null);
+    const reasons = doc?.reasons ?? [];
+    const filtered = reasons.filter((r) => r.toLowerCase().includes(focused.value.toLowerCase()));
+    await interaction.respond(filtered.slice(0, 25).map((r) => ({ name: r.slice(0, 100), value: r.slice(0, 100) }))).catch(() => null);
   },
 };

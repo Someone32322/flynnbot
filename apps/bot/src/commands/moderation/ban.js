@@ -41,7 +41,7 @@ module.exports = {
     .addUserOption((option) => option.setName("user").setDescription("User to ban").setRequired(false))
     .addStringOption((option) => option.setName("user_id").setDescription("User ID to ban").setRequired(false))
     .addStringOption((option) => option.setName("time").setDescription("Optional ban duration like 1d").setRequired(false))
-    .addStringOption((option) => option.setName("reason").setDescription("Ban reason").setRequired(false)),
+    .addStringOption((option) => option.setName("reason").setDescription("Ban reason").setRequired(false).setAutocomplete(true)),
   async execute(interaction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
@@ -127,5 +127,14 @@ module.exports = {
     await interaction.editReply(
       buildStaffReply("ban", { targetUser: target.targetUser, caseDocument, dmResult })
     );
+  },
+  async autocomplete(interaction) {
+    const { PredefinedReasons } = require('../../models/PredefinedReasons');
+    const focused = interaction.options.getFocused(true);
+    if (focused.name !== 'reason') return;
+    const doc = await PredefinedReasons.findOne({ guildId: interaction.guildId, action: 'ban' }).lean().catch(() => null);
+    const reasons = doc?.reasons ?? [];
+    const filtered = reasons.filter((r) => r.toLowerCase().includes(focused.value.toLowerCase()));
+    await interaction.respond(filtered.slice(0, 25).map((r) => ({ name: r.slice(0, 100), value: r.slice(0, 100) }))).catch(() => null);
   },
 };

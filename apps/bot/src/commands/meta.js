@@ -18,20 +18,6 @@ module.exports = {
     globalOnly: true,
   },
 
-  // ── Admin ─────────────────────────────────────────────────────
-  setauditlog: {
-    category: 'Admin',
-    description: 'Set the channel where moderation audit logs are sent.',
-    usage: '/setauditlog <channel>',
-    aliases: [],
-  },
-  setmodrole: {
-    category: 'Admin',
-    description: 'Set the moderator role required to run moderation commands.',
-    usage: '/setmodrole <role>',
-    aliases: [],
-  },
-
   // ── Moderation ────────────────────────────────────────────────
   ban: {
     category: 'Moderation',
@@ -223,6 +209,174 @@ module.exports = {
     category: 'Moderation',
     description: 'View all active warnings for a member.',
     usage: '/warnings <user>',
+    aliases: [],
+  },
+
+  // ── Info ──────────────────────────────────────────────────────
+  avatarinfo: {
+    category: 'Info',
+    description: 'Display a user\'s avatar with download links.',
+    usage: '/avatarinfo [user]',
+    aliases: [],
+  },
+  bannerinfo: {
+    category: 'Info',
+    description: 'Display a user\'s profile banner.',
+    usage: '/bannerinfo [user]',
+    aliases: [],
+  },
+  channelinfo: {
+    category: 'Info',
+    description: 'Display detailed information about a channel.',
+    usage: '/channelinfo [channel]',
+    aliases: [],
+  },
+  emojiinfo: {
+    category: 'Info',
+    description: 'Display information about a custom emoji.',
+    usage: '/emojiinfo <emoji>',
+    aliases: [],
+  },
+  guildbannerinfo: {
+    category: 'Info',
+    description: 'Display the server\'s banner image.',
+    usage: '/guildbannerinfo',
+    aliases: [],
+  },
+  guildchannelcount: {
+    category: 'Info',
+    description: 'Show a breakdown of all channel types in this server.',
+    usage: '/guildchannelcount',
+    aliases: [],
+  },
+  guildiconinfo: {
+    category: 'Info',
+    description: 'Display the server\'s icon with download links.',
+    usage: '/guildiconinfo',
+    aliases: [],
+  },
+  guildinfo: {
+    category: 'Info',
+    description: 'Display detailed information about this server.',
+    usage: '/guildinfo',
+    aliases: [],
+  },
+  guildmembercount: {
+    category: 'Info',
+    description: 'Display a member count breakdown for this server.',
+    usage: '/guildmembercount',
+    aliases: [],
+  },
+  guildsplashinfo: {
+    category: 'Info',
+    description: 'Display the server\'s invite splash image.',
+    usage: '/guildsplashinfo',
+    aliases: [],
+  },
+  roleinfo: {
+    category: 'Info',
+    description: 'Display detailed information about a role.',
+    usage: '/roleinfo <role>',
+    aliases: [],
+  },
+  stickerinfo: {
+    category: 'Info',
+    description: 'Display information about a guild sticker by name.',
+    usage: '/stickerinfo <name>',
+    aliases: [],
+  },
+  stickerpackinfo: {
+    category: 'Info',
+    description: 'Display information about a Discord sticker pack by name.',
+    usage: '/stickerpackinfo <name>',
+    aliases: [],
+  },
+  userinfo: {
+    category: 'Info',
+    description: 'Display detailed information about a user.',
+    usage: '/userinfo [user]',
+    aliases: [],
+  },
+
+  // ── Message ───────────────────────────────────────────────────
+  sendmessage: {
+    category: 'Message',
+    description: 'Send a plain-text message to a channel.',
+    usage: '/sendmessage <channel> <content>',
+    aliases: [],
+  },
+  sendembed: {
+    category: 'Message',
+    description: 'Send a saved embed template to a channel.',
+    usage: '/sendembed <channel> <name>',
+    aliases: [],
+  },
+
+  // ── New Moderation Commands ───────────────────────────────────
+  archive: {
+    category: 'Moderation',
+    description: 'Archive message history for a user or channel.',
+    usage: '/archive user <user> [limit] | /archive channel [channel] [limit]',
+    aliases: [],
+  },
+  casedelete: {
+    category: 'Moderation',
+    description: 'Permanently delete a moderation case.',
+    usage: '/casedelete <case-id>',
+    aliases: [],
+  },
+  caseinfo: {
+    category: 'Moderation',
+    description: 'View detailed information about a case.',
+    usage: '/caseinfo <case-id>',
+    aliases: [],
+  },
+  massban: {
+    category: 'Moderation',
+    description: 'Ban multiple users at once by ID.',
+    usage: '/massban <user-ids> [reason] [delete-days]',
+    aliases: [],
+  },
+  masskick: {
+    category: 'Moderation',
+    description: 'Kick multiple members at once.',
+    usage: '/masskick <user-ids> [reason]',
+    aliases: [],
+  },
+  massmute: {
+    category: 'Moderation',
+    description: 'Timeout multiple members at once.',
+    usage: '/massmute <user-ids> [duration] [reason]',
+    aliases: [],
+  },
+  masswarn: {
+    category: 'Moderation',
+    description: 'Warn multiple members at once.',
+    usage: '/masswarn <user-ids> [reason]',
+    aliases: [],
+  },
+  'message-histories': {
+    category: 'Moderation',
+    description: 'List all message archives for this server.',
+    usage: '/message-histories [page]',
+    aliases: [],
+  },
+  predefinedreasons: {
+    category: 'Moderation',
+    description: 'Manage predefined reasons for moderation actions.',
+    usage: '/predefinedreasons <add|list|delete|edit>',
+    aliases: [],
+  },
+  setproof: {
+    category: 'Moderation',
+    description: 'Add, edit, or delete proof on a moderation case.',
+    usage: '/setproof <add|delete|edit>',
+    aliases: [],
+  },
+  slowmode: {
+    category: 'Moderation',
+    description: 'Set slowmode delay on a channel.',
+    usage: '/slowmode <seconds> [channel]',
     aliases: [],
   },
 };

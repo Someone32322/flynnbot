@@ -9,6 +9,7 @@ dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 const { Client, GatewayIntentBits } = require("discord.js");
 const { Collection } = require("discord.js");
 const mongoose = require("mongoose");
+const { startScheduler } = require("./src/lib/scheduler");
 
 process.env.DISCORD_BOT_TOKEN =
   process.env.DISCORD_BOT_TOKEN || process.env.BOT_TOKEN || process.env.TOKEN;
@@ -32,6 +33,12 @@ const client = new Client({
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent, // privileged — must be enabled in Discord Developer Portal
+    GatewayIntentBits.GuildEmojisAndStickers,
+    GatewayIntentBits.GuildScheduledEvents,
+    GatewayIntentBits.GuildInvites,
+    GatewayIntentBits.AutoModerationConfiguration,
+    GatewayIntentBits.AutoModerationExecution,
+    GatewayIntentBits.GuildMessageReactions,
   ],
 });
 client.commands = new Collection();
@@ -108,6 +115,9 @@ async function bootstrap() {
     console.log("Connected to MongoDB.");
 
     await client.login(process.env.DISCORD_BOT_TOKEN);
+
+    // Start scheduler once client is ready (moderation timers + message builder)
+    client.once('ready', () => startScheduler(client));
   } catch (error) {
     console.error("Bot startup failed:", error);
     process.exit(1);

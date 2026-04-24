@@ -81,4 +81,57 @@ module.exports = {
   registerGuildCommand,
   updateGuildCommand,
   deleteGuildCommand,
+  postMessage,
+  editMessage,
+  deleteMessage,
+  addReaction,
+  sendWebhook,
 };
+
+// ── Message helpers ───────────────────────────────────────────
+async function postMessage(channelId, body) {
+  return discordFetch(`/channels/${channelId}/messages`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+async function editMessage(channelId, messageId, body) {
+  return discordFetch(`/channels/${channelId}/messages/${messageId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
+async function deleteMessage(channelId, messageId) {
+  return discordFetch(`/channels/${channelId}/messages/${messageId}`, {
+    method: 'DELETE',
+  });
+}
+
+async function addReaction(channelId, messageId, emoji) {
+  const encoded = encodeURIComponent(emoji);
+  return discordFetch(`/channels/${channelId}/messages/${messageId}/reactions/${encoded}/@me`, {
+    method: 'PUT',
+    headers: { 'Content-Length': '0' },
+  });
+}
+
+// ── Webhook helpers ───────────────────────────────────────────
+async function sendWebhook(webhookUrl, body) {
+  if (!/^https:\/\/discord(app)?\.com\/api\/webhooks\//.test(webhookUrl)) {
+    throw new Error('Invalid Discord webhook URL');
+  }
+  // Use ?wait=true so Discord returns the sent message object
+  const res = await fetch(`${webhookUrl}?wait=true`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Webhook send failed ${res.status}: ${text}`);
+  }
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}

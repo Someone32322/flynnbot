@@ -1,6 +1,7 @@
 const { ActivityType } = require("discord.js");
 const { prunePaginationSessions } = require("../lib/pagination");
 const { startScheduler } = require("../lib/scheduler");
+const { setupLogging } = require("../lib/logging");
 
 module.exports = {
   name: "clientReady",
@@ -8,6 +9,7 @@ module.exports = {
   execute(client) {
     console.log(`Ready event fired for ${client.user.tag}`);
     startScheduler(client);
+    setupLogging(client);
 
     const rotatingStatuses = [
       { name: "tickets", type: ActivityType.Watching },

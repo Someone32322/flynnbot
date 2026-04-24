@@ -29,7 +29,11 @@ module.exports = {
 
     const embed = buildSapphireEmbed({
       title: `Warnings for ${target.targetUser.tag}`,
-      description: cases.map((entry) => `#${entry.caseNumber}: ${entry.reason}`).join("\n\n"),
+      description: cases.map((entry) => {
+        const date = `<t:${Math.floor(new Date(entry.createdAt).getTime() / 1000)}:d>`;
+        const proofStr = entry.proof?.length ? ` · ${entry.proof.length} proof entry${entry.proof.length > 1 ? 'ies' : ''}` : '';
+        return `> **\`#${entry.caseNumber}\`** — ${entry.reason}${proofStr}\n> ${date}`;
+      }).join('\n\n'),
     });
 
     await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });

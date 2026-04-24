@@ -1,5 +1,6 @@
-const { MessageFlags } = require("discord.js");
+const { EmbedBuilder, MessageFlags } = require("discord.js");
 const { GuildConfig } = require("../models/GuildConfig");
+const { ReactionRole } = require("../models/ReactionRole");
 const { handlePaginationButton } = require("../lib/pagination");
 
 // Commands exempt from per-guild settings checks (always accessible)
@@ -24,6 +25,30 @@ module.exports = {
   async execute(interaction) {
     if (interaction.isButton() && interaction.customId.startsWith("paginate:")) {
       await handlePaginationButton(interaction);
+      return;
+    }
+
+    // ── Reaction Role buttons ────────────────────────────────────
+    if (interaction.isButton() && interaction.customId.startsWith("rr:btn:")) {
+      await handleRRButton(interaction);
+      return;
+    }
+
+    // ── Reaction Role select menus ───────────────────────────────
+    if (interaction.isStringSelectMenu() && interaction.customId.startsWith("rr:sel:")) {
+      await handleRRSelect(interaction);
+      return;
+    }
+
+    if (interaction.isAutocomplete()) {
+      const command = interaction.client.commands.get(interaction.commandName);
+      if (command?.autocomplete) {
+        try {
+          await command.autocomplete(interaction);
+        } catch (err) {
+          console.error('[Autocomplete error]', interaction.commandName, err);
+        }
+      }
       return;
     }
 
@@ -61,10 +86,14 @@ module.exports = {
 
       // Must be explicitly enabled by an admin through the dashboard
       if (!cmdSettings?.enabled) {
-        await interaction.reply({
-          content: `The \`/${interaction.commandName}\` command hasn't been enabled for this server yet. A server admin can enable it from the [FlynnBot Dashboard](${process.env.DASHBOARD_URL || 'http://localhost:3000'}).`,
-          flags: MessageFlags.Ephemeral,
-        });
+        try {
+          await interaction.reply({
+            content: `The \`/${interaction.commandName}\` command hasn't been enabled for this server yet. A server admin can enable it from the [FlynnBot Dashboard](${process.env.DASHBOARD_URL || 'http://localhost:3000'}).`,
+            flags: MessageFlags.Ephemeral,
+          });
+        } catch (err) {
+          if (err?.code !== 10062) throw err;
+        }
         return;
       }
 
@@ -73,10 +102,14 @@ module.exports = {
         const memberRoleIds = interaction.member.roles.cache.map((r) => r.id);
         const allowed = cmdSettings.allowedRoles.some((id) => memberRoleIds.includes(id));
         if (!allowed) {
-          await interaction.reply({
-            content: "You don't have the required role to use this command.",
-            flags: MessageFlags.Ephemeral,
-          });
+          try {
+            await interaction.reply({
+              content: "You don't have the required role to use this command.",
+              flags: MessageFlags.Ephemeral,
+            });
+          } catch (err) {
+            if (err?.code !== 10062) throw err;
+          }
           return;
         }
       }
@@ -84,10 +117,14 @@ module.exports = {
       // Channel restriction check
       if (cmdSettings.allowedChannels?.length > 0) {
         if (!cmdSettings.allowedChannels.includes(interaction.channelId)) {
-          await interaction.reply({
-            content: "This command cannot be used in this channel.",
-            flags: MessageFlags.Ephemeral,
-          });
+          try {
+            await interaction.reply({
+              content: "This command cannot be used in this channel.",
+              flags: MessageFlags.Ephemeral,
+            });
+          } catch (err) {
+            if (err?.code !== 10062) throw err;
+          }
           return;
         }
       }
@@ -172,3 +209,95 @@ module.exports = {
     }
   },
 };
+
+// ── Reaction Role helpers ────────────────────────────────────
+async function handleRRButton(interaction) {
+  try {
+    const parts = interaction.customId.split(":");
+    // rr:btn:{rrId}:{optId}
+    const rrId = parts[2];
+    const optId = parts[3];
+    const rr = await ReactionRole.findById(rrId);
+    if (!rr) return safeReply(interaction, "This reaction role no longer exists.");
+    const opt = rr.options.find((o) => o.optId === optId);
+    if (!opt) return safeReply(interaction, "This option no longer exists.");
+    await executeRRAction(interaction, opt);
+  } catch (err) {
+    console.error("[RR] Button handler error:", err);
+    await safeReply(interaction, "An error occurred processing your request.");
+  }
+}
+
+async function handleRRSelect(interaction) {
+  try {
+    const parts = interaction.customId.split(":");
+    // rr:sel:{rrId}
+    const rrId = parts[2];
+    const rr = await ReactionRole.findById(rrId);
+    if (!rr) return safeReply(interaction, "This reaction role no longer exists.");
+    const selectedOptId = interaction.values[0];
+    const opt = rr.options.find((o) => o.optId === selectedOptId);
+    if (!opt) return safeReply(interaction, "That option no longer exists.");
+    await executeRRAction(interaction, opt);
+  } catch (err) {
+    console.error("[RR] Select handler error:", err);
+    await safeReply(interaction, "An error occurred processing your request.");
+  }
+}
+
+async function executeRRAction(interaction, opt) {
+  if (opt.action === "role") {
+    const member = interaction.member ?? await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+    if (!member) return safeReply(interaction, "Could not find your member in this server.");
+    const role = interaction.guild.roles.cache.get(opt.roleId);
+    if (!role) return safeReply(interaction, "The configured role no longer exists.");
+    const hasRole = member.roles.cache.has(opt.roleId);
+    if (opt.toggleRole && hasRole) {
+      await member.roles.remove(role);
+      return safeReply(interaction, `✅ Removed the **${role.name}** role.`);
+    } else if (!hasRole) {
+      await member.roles.add(role);
+      return safeReply(interaction, `✅ You now have the **${role.name}** role.`);
+    } else {
+      return safeReply(interaction, `You already have the **${role.name}** role.`);
+    }
+  } else if (opt.action === "message") {
+    return safeReply(interaction, buildResponsePayload(opt));
+  } else if (opt.action === "dm") {
+    try {
+      await interaction.user.send(buildResponsePayload(opt));
+      return safeReply(interaction, "✅ You have been sent a DM!");
+    } catch {
+      return safeReply(interaction, "❌ Failed to send you a DM. Please check your privacy settings.");
+    }
+  }
+}
+
+function buildResponsePayload(opt) {
+  const content = String(opt?.content || "").trim() || "No message configured.";
+  if (opt?.contentType === "embed") {
+    return {
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0x0f52ba)
+          .setDescription(content),
+      ],
+    };
+  }
+  return { content };
+}
+
+async function safeReply(interaction, payload) {
+  const normalized = typeof payload === "string" ? { content: payload } : { ...(payload || {}) };
+  if (!normalized.content && !normalized.embeds?.length) {
+    normalized.content = "No message configured.";
+  }
+
+  try {
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp({ ...normalized, flags: MessageFlags.Ephemeral });
+    } else {
+      await interaction.reply({ ...normalized, flags: MessageFlags.Ephemeral });
+    }
+  } catch (_) {}
+}
