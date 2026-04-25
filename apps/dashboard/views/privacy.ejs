@@ -1,0 +1,251 @@
+<%- include('partials/head', { title: 'Privacy Policy' }) %>
+<body>
+  <%- include('partials/nav') %>
+
+  <div class="legal-page">
+    <div class="legal-hero">
+      <div class="legal-hero-inner">
+        <div class="legal-badge">Legal</div>
+        <h1 class="legal-title">Privacy Policy</h1>
+        <p class="legal-subtitle">Last updated: April 25, 2026</p>
+      </div>
+    </div>
+
+    <div class="legal-body">
+      <aside class="legal-toc">
+        <p class="toc-heading">On this page</p>
+        <nav>
+          <a href="#overview" class="toc-link">1. Overview</a>
+          <a href="#data-collected" class="toc-link">2. Data We Collect</a>
+          <a href="#how-we-use" class="toc-link">3. How We Use Your Data</a>
+          <a href="#data-storage" class="toc-link">4. Data Storage & Security</a>
+          <a href="#third-parties" class="toc-link">5. Third-Party Services</a>
+          <a href="#data-retention" class="toc-link">6. Data Retention</a>
+          <a href="#your-rights" class="toc-link">7. Your Rights</a>
+          <a href="#childrens-privacy" class="toc-link">8. Children's Privacy</a>
+          <a href="#changes" class="toc-link">9. Changes to This Policy</a>
+          <a href="#contact" class="toc-link">10. Contact</a>
+        </nav>
+      </aside>
+
+      <main class="legal-content">
+
+        <section id="overview" class="legal-section">
+          <h2>1. Overview</h2>
+          <p>
+            FlynnBot ("we", "our", or "us") is a Discord bot and associated web dashboard. This Privacy Policy explains what information we collect, how we use it, and your rights regarding that information when you use FlynnBot or the FlynnBot Dashboard.
+          </p>
+          <p>
+            By using FlynnBot or the FlynnBot Dashboard, you agree to the collection and use of information in accordance with this policy. If you do not agree, please discontinue use of the service.
+          </p>
+          <div class="legal-callout">
+            <span class="callout-icon">🔒</span>
+            <span>We take your privacy seriously. We only collect data necessary to operate the service and never sell your personal information to third parties.</span>
+          </div>
+        </section>
+
+        <section id="data-collected" class="legal-section">
+          <h2>2. Data We Collect</h2>
+          <p>We collect the following categories of data:</p>
+
+          <h3>2.1 Discord User Data</h3>
+          <p>When you log in to the FlynnBot Dashboard via Discord OAuth2, we receive:</p>
+          <ul>
+            <li>Your Discord user ID</li>
+            <li>Your Discord username and discriminator</li>
+            <li>Your Discord avatar hash</li>
+            <li>Your Discord email address (only if you grant this permission)</li>
+            <li>The list of servers you share with FlynnBot (guild IDs and names)</li>
+          </ul>
+
+          <h3>2.2 Server (Guild) Data</h3>
+          <p>When FlynnBot is added to a Discord server, we may store:</p>
+          <ul>
+            <li>Server (guild) ID and name</li>
+            <li>Channel IDs and names (for configured features)</li>
+            <li>Role IDs and names (for moderation and reaction role features)</li>
+            <li>Configuration settings chosen by server administrators</li>
+          </ul>
+
+          <h3>2.3 Moderation & Case Data</h3>
+          <p>To provide moderation features, we store:</p>
+          <ul>
+            <li>User IDs involved in moderation actions</li>
+            <li>Moderator user IDs</li>
+            <li>Action types (warn, mute, kick, ban, etc.)</li>
+            <li>Timestamps and optional reason text provided by moderators</li>
+            <li>Case numbers and audit log references</li>
+          </ul>
+
+          <h3>2.4 Message Builder & Scheduler Data</h3>
+          <p>For the message builder and scheduler features, we store:</p>
+          <ul>
+            <li>Message content, embed configurations, and action row configurations created by server administrators</li>
+            <li>Scheduled delivery times and target channels</li>
+            <li>IDs of messages sent by the bot to Discord channels</li>
+          </ul>
+
+          <h3>2.5 Technical & Log Data</h3>
+          <p>We may automatically log:</p>
+          <ul>
+            <li>Error logs and crash reports (no personal data beyond IDs)</li>
+            <li>Session tokens (stored server-side, cleared on logout)</li>
+          </ul>
+        </section>
+
+        <section id="how-we-use" class="legal-section">
+          <h2>3. How We Use Your Data</h2>
+          <p>We use collected data solely to:</p>
+          <ul>
+            <li>Authenticate you on the FlynnBot Dashboard via Discord OAuth2</li>
+            <li>Display your account information and server list on the dashboard</li>
+            <li>Execute moderation actions and maintain case histories for server administrators</li>
+            <li>Deliver scheduled messages and manage reaction roles, action rows, and other configured features</li>
+            <li>Enforce server-specific settings and configurations</li>
+            <li>Debug and fix issues with the service</li>
+          </ul>
+          <p>We do <strong>not</strong> use your data for advertising, profiling, or sale to third parties.</p>
+        </section>
+
+        <section id="data-storage" class="legal-section">
+          <h2>4. Data Storage &amp; Security</h2>
+          <p>
+            Data is stored in a MongoDB Atlas database hosted by MongoDB, Inc. All connections use TLS encryption in transit. We apply access controls to limit who can access the database.
+          </p>
+          <p>
+            Dashboard sessions are managed server-side using signed, HttpOnly cookies. We do not store passwords as FlynnBot uses Discord OAuth2 exclusively for authentication.
+          </p>
+          <div class="legal-callout legal-callout--warn">
+            <span class="callout-icon">⚠️</span>
+            <span>While we take reasonable precautions, no internet transmission or electronic storage is 100% secure. We cannot guarantee absolute security.</span>
+          </div>
+        </section>
+
+        <section id="third-parties" class="legal-section">
+          <h2>5. Third-Party Services</h2>
+          <p>FlynnBot relies on the following third-party services:</p>
+          <div class="legal-table-wrap">
+            <table class="legal-table">
+              <thead>
+                <tr>
+                  <th>Service</th>
+                  <th>Purpose</th>
+                  <th>Privacy Policy</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Discord</td>
+                  <td>Bot platform &amp; OAuth2 authentication</td>
+                  <td><a href="https://discord.com/privacy" target="_blank" rel="noopener noreferrer">discord.com/privacy</a></td>
+                </tr>
+                <tr>
+                  <td>MongoDB Atlas</td>
+                  <td>Database hosting</td>
+                  <td><a href="https://www.mongodb.com/legal/privacy-policy" target="_blank" rel="noopener noreferrer">mongodb.com/legal/privacy-policy</a></td>
+                </tr>
+                <tr>
+                  <td>Render</td>
+                  <td>Dashboard hosting</td>
+                  <td><a href="https://render.com/privacy" target="_blank" rel="noopener noreferrer">render.com/privacy</a></td>
+                </tr>
+                <tr>
+                  <td>Railway</td>
+                  <td>Bot hosting</td>
+                  <td><a href="https://railway.app/legal/privacy" target="_blank" rel="noopener noreferrer">railway.app/legal/privacy</a></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p>We are not responsible for the privacy practices of these third-party services.</p>
+        </section>
+
+        <section id="data-retention" class="legal-section">
+          <h2>6. Data Retention</h2>
+          <p>We retain data for as long as it is needed to provide the service:</p>
+          <ul>
+            <li><strong>Guild configuration data</strong> is retained while FlynnBot remains in the server. Removing the bot does not automatically delete your server's data — please contact us to request deletion.</li>
+            <li><strong>Moderation case data</strong> is retained indefinitely to preserve audit trails unless a server administrator requests deletion.</li>
+            <li><strong>Session data</strong> expires after 7 days of inactivity.</li>
+            <li><strong>User authentication data</strong> (Discord ID, username, avatar) is refreshed each time you log in and is not stored long-term beyond the active session.</li>
+          </ul>
+        </section>
+
+        <section id="your-rights" class="legal-section">
+          <h2>7. Your Rights</h2>
+          <p>Depending on your jurisdiction, you may have the right to:</p>
+          <ul>
+            <li><strong>Access</strong> the personal data we hold about you</li>
+            <li><strong>Correct</strong> inaccurate data</li>
+            <li><strong>Request deletion</strong> of your data ("right to be forgotten")</li>
+            <li><strong>Object</strong> to or restrict certain processing</li>
+            <li><strong>Data portability</strong> — receive your data in a machine-readable format</li>
+          </ul>
+          <p>
+            To exercise any of these rights, contact us using the details in the <a href="#contact">Contact</a> section below. We will respond within 30 days.
+          </p>
+          <p>
+            Note: Some data may need to be retained to fulfil legal obligations or legitimate server administration needs.
+          </p>
+        </section>
+
+        <section id="childrens-privacy" class="legal-section">
+          <h2>8. Children's Privacy</h2>
+          <p>
+            FlynnBot is not intended for users under the age of 13, or under the minimum age required by Discord's Terms of Service in your country. We do not knowingly collect personal information from children. If we become aware that a child has provided us with personal data, we will delete it promptly.
+          </p>
+        </section>
+
+        <section id="changes" class="legal-section">
+          <h2>9. Changes to This Policy</h2>
+          <p>
+            We may update this Privacy Policy from time to time. When we do, we will update the "Last updated" date at the top of the page. Continued use of FlynnBot or the dashboard after changes constitutes acceptance of the updated policy.
+          </p>
+          <p>
+            For significant changes, we will make reasonable efforts to notify server administrators via the bot or dashboard.
+          </p>
+        </section>
+
+        <section id="contact" class="legal-section">
+          <h2>10. Contact</h2>
+          <p>
+            If you have questions, concerns, or requests regarding this Privacy Policy, please contact us:
+          </p>
+          <div class="legal-contact-card">
+            <div class="contact-row">
+              <span class="contact-label">Discord Server</span>
+              <a href="https://discord.gg/your-server" target="_blank" rel="noopener noreferrer" class="contact-link">Join our Support Server</a>
+            </div>
+            <div class="contact-row">
+              <span class="contact-label">GitHub</span>
+              <a href="https://github.com/Someone32322/flynnbot-dashboard" target="_blank" rel="noopener noreferrer" class="contact-link">github.com/Someone32322/flynnbot-dashboard</a>
+            </div>
+          </div>
+        </section>
+
+      </main>
+    </div>
+  </div>
+
+  <%- include('partials/footer') %>
+
+  <script>
+    // Highlight active TOC link on scroll
+    (function () {
+      const links = document.querySelectorAll('.toc-link');
+      const sections = document.querySelectorAll('.legal-section');
+      const obs = new IntersectionObserver((entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            links.forEach((l) => l.classList.remove('active'));
+            const id = e.target.id;
+            const active = document.querySelector(`.toc-link[href="#${id}"]`);
+            if (active) active.classList.add('active');
+          }
+        });
+      }, { rootMargin: '-30% 0px -60% 0px' });
+      sections.forEach((s) => obs.observe(s));
+    })();
+  </script>
+</body>
+</html>

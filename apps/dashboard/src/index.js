@@ -76,6 +76,10 @@ app.use('/dashboard', dashboardRoutes);
 // Home
 app.get('/', (req, res) => res.render('index'));
 
+// Legal
+app.get('/privacy', (req, res) => res.render('privacy'));
+app.get('/terms', (req, res) => res.render('terms'));
+
 // 404
 app.use((req, res) => {
   res.status(404).render('error', { code: 404, message: 'Page not found.' });

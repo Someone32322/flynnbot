@@ -1,4 +1,4 @@
-const { EmbedBuilder, MessageFlags } = require("discord.js");
+const { EmbedBuilder, MessageFlags, PermissionFlagsBits } = require("discord.js");
 const { GuildConfig } = require("../models/GuildConfig");
 const { ReactionRole } = require("../models/ReactionRole");
 const { ScheduledMessage } = require("../models/ScheduledMessage");
@@ -6,6 +6,7 @@ const { handlePaginationButton } = require("../lib/pagination");
 
 // Commands exempt from per-guild settings checks (always accessible)
 const GLOBAL_COMMANDS = new Set(['help']);
+const HELP_PUBLIC_OVERRIDE_GUILD_ID = "1228634706489376838";
 
 function normalizeDeferredPayload(payload) {
   if (typeof payload === "string") {
@@ -145,7 +146,23 @@ module.exports = {
 
     // ── Response mode (ephemeralMode per command settings) ──────
     // 'off' = force public; everything else = ephemeral (safe default)
-    const isPublic = cmdSettings?.ephemeralMode === 'off';
+    // One-time override: /help public:true sends publicly for this invocation only,
+    // but only for admins in the configured guild.
+    const requestedPublicHelp =
+      interaction.commandName === "help"
+      && interaction.options?.getBoolean?.("public") === true;
+    const isAllowedPublicHelp =
+      requestedPublicHelp
+      && interaction.guildId === HELP_PUBLIC_OVERRIDE_GUILD_ID
+      && interaction.memberPermissions?.has(PermissionFlagsBits.Administrator);
+
+    const publicOverride = isAllowedPublicHelp;
+
+    // For /help, lock public replies to the explicit admin+guild rule only.
+    // Other commands continue to respect ephemeralMode = 'off'.
+    const isPublic = interaction.commandName === "help"
+      ? publicOverride
+      : (cmdSettings?.ephemeralMode === 'off' || publicOverride);
     const deferFlags = isPublic ? {} : { flags: MessageFlags.Ephemeral };
 
     const originalReply = interaction.reply.bind(interaction);
