@@ -6,7 +6,7 @@ dotenv.config();
 dotenv.config({ path: path.resolve(__dirname, ".env") });
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
-const { Client, GatewayIntentBits } = require("discord.js");
+const { Client, GatewayIntentBits, Partials } = require("discord.js");
 const { Collection } = require("discord.js");
 const mongoose = require("mongoose");
 const { startScheduler } = require("./src/lib/scheduler");
@@ -39,6 +39,13 @@ const client = new Client({
     GatewayIntentBits.AutoModerationConfiguration,
     GatewayIntentBits.AutoModerationExecution,
     GatewayIntentBits.GuildMessageReactions,
+  ],
+  partials: [
+    Partials.User,
+    Partials.Channel,
+    Partials.Message,
+    Partials.Reaction,
+    Partials.GuildMember,
   ],
 });
 client.commands = new Collection();
