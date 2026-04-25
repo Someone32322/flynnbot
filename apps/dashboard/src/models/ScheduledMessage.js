@@ -60,8 +60,9 @@ const deliverySchema = new mongoose.Schema(
   {
     // template=saved only, channel=send to channel, webhook=discord webhook,
     // schedule_once=run at date, schedule_repeat=run every N mins,
-    // sticky=repost on every new message, command=triggered by keyword
-    type:                  { type: String, enum: ['template', 'channel', 'webhook', 'schedule_once', 'schedule_repeat', 'sticky', 'command'], default: 'template' },
+    // sticky=repost on every new message, command=triggered by keyword,
+    // ephemeral=respond to command with ephemeral message, dm=send as DM to user
+    type:                  { type: String, enum: ['template', 'channel', 'webhook', 'schedule_once', 'schedule_repeat', 'sticky', 'command', 'ephemeral', 'dm'], default: 'template' },
     channelId:             { type: String, default: null },
     webhookUrl:            { type: String, default: null },
     scheduleAt:            { type: Date,   default: null },
@@ -71,6 +72,9 @@ const deliverySchema = new mongoose.Schema(
     scheduleEnabled:       { type: Boolean, default: true },
     commandTrigger:        { type: String, default: null },
     commandRequiredRoleId: { type: String, default: null },
+    // Ephemeral & DM: only embed customization (no content/action rows for responses)
+    responseEmbeds:        { type: [embedSchema], default: [] },
+    responseUseCommand:    { type: Boolean, default: false }, // If true, dm/ephemeral sends in response to cmd
   },
   { _id: false }
 );

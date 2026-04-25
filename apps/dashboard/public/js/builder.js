@@ -25,6 +25,8 @@
     { key: 'schedule_repeat', icon: '🔄',  label: 'Repeating',    desc: 'Send every N minutes.' },
     { key: 'sticky',          icon: '📌',  label: 'Sticky',       desc: 'Always last message in a channel.' },
     { key: 'command',         icon: '⚡',  label: 'Command Trigger', desc: 'Triggered by a keyword.' },
+    { key: 'ephemeral',       icon: '👁️',  label: 'Ephemeral',     desc: 'Respond with hidden message.' },
+    { key: 'dm',              icon: '💬',  label: 'Direct Message', desc: 'Send as DM to user.' },
   ];
 
   // ── Event delegation handlers (CSP-safe: no inline onclick/oninput in HTML) ──
@@ -316,6 +318,8 @@
       schedule_repeat: { cls: 'badge-schedule', icon: '🔄', label: 'Repeating' },
       sticky:          { cls: 'badge-sticky',   icon: '📌', label: 'Sticky' },
       command:         { cls: 'badge-command',  icon: '⚡', label: 'Command' },
+      ephemeral:       { cls: 'badge-ephemeral', icon: '👁️', label: 'Ephemeral' },
+      dm:              { cls: 'badge-dm',       icon: '💬', label: 'DM' },
     };
     return map[type] || { cls: 'badge-template', icon: '🗂️', label: type };
   }
@@ -1094,6 +1098,32 @@
           </select>
         </label>
         <p class="bf-hint">⚡ When a user sends a message that starts with the trigger (and optionally has the required role), the bot replies with this message. Variables like <code>{user}</code> are substituted.</p>`;
+    } else if (type === 'ephemeral') {
+      html = `
+        <p class="bf-hint">👁️ <strong>Ephemeral Response:</strong> This message will only be visible to the user who triggered the command. Perfect for sensitive information or personalized replies.</p>
+        <label class="bf-label">Trigger Command
+          <input type="text" id="dcCommandTrigger" maxlength="100" value="${esc(delivery.commandTrigger || '')}"
+            placeholder="e.g. /stats or !profile">
+        </label>
+        <label class="bf-label">Required Role <small style="font-weight:400;opacity:.6">(optional)</small>
+          <select id="dcCommandRole">
+            <option value="">— Anyone —</option>${roleOpts}
+          </select>
+        </label>
+        <p class="bf-hint" style="background:rgba(158,130,193,0.1);border-color:rgba(158,130,193,0.3)">💡 Configure embeds above — this response will send only those embeds, no content text or action rows.</p>`;
+    } else if (type === 'dm') {
+      html = `
+        <p class="bf-hint">💬 <strong>Direct Message:</strong> This message will be sent as a DM to the user who triggered the command.</p>
+        <label class="bf-label">Trigger Command
+          <input type="text" id="dcCommandTrigger" maxlength="100" value="${esc(delivery.commandTrigger || '')}"
+            placeholder="e.g. /welcome or !rules">
+        </label>
+        <label class="bf-label">Required Role <small style="font-weight:400;opacity:.6">(optional)</small>
+          <select id="dcCommandRole">
+            <option value="">— Anyone —</option>${roleOpts}
+          </select>
+        </label>
+        <p class="bf-hint" style="background:rgba(88,155,255,0.1);border-color:rgba(88,155,255,0.3)">💡 Configure embeds above — this DM will send only those embeds, no content text or action rows.</p>`;
     }
 
     wrap.innerHTML = html;
@@ -1114,7 +1144,7 @@
     if (type === 'webhook')   d.webhookUrl   = val('dcWebhookUrl');
     if (type === 'schedule_once')   d.scheduleAt  = val('dcScheduleAt')   ? new Date(val('dcScheduleAt')).toISOString() : null;
     if (type === 'schedule_repeat') d.intervalMins = get('dcIntervalMins')?.value ? Number(get('dcIntervalMins').value) : null;
-    if (type === 'command') {
+    if (['command', 'ephemeral', 'dm'].includes(type)) {
       d.commandTrigger        = val('dcCommandTrigger');
       d.commandRequiredRoleId = val('dcCommandRole');
     }

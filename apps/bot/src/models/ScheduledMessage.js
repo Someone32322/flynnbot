@@ -57,7 +57,7 @@ const actionRowSchema = new mongoose.Schema(
 
 const deliverySchema = new mongoose.Schema(
   {
-    type:                  { type: String, enum: ['template', 'channel', 'webhook', 'schedule_once', 'schedule_repeat', 'sticky', 'command'], default: 'template' },
+    type:                  { type: String, enum: ['template', 'channel', 'webhook', 'schedule_once', 'schedule_repeat', 'sticky', 'command', 'ephemeral', 'dm'], default: 'template' },
     channelId:             { type: String, default: null },
     webhookUrl:            { type: String, default: null },
     scheduleAt:            { type: Date,   default: null },
@@ -67,6 +67,9 @@ const deliverySchema = new mongoose.Schema(
     scheduleEnabled:       { type: Boolean, default: true },
     commandTrigger:        { type: String, default: null },
     commandRequiredRoleId: { type: String, default: null },
+    // Ephemeral & DM: only embed customization (no content/action rows for responses)
+    responseEmbeds:        { type: [embedSchema], default: [] },
+    responseUseCommand:    { type: Boolean, default: false }, // If true, dm/ephemeral sends in response to cmd
   },
   { _id: false }
 );

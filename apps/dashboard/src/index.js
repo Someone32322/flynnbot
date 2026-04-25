@@ -80,6 +80,23 @@ app.get('/', (req, res) => res.render('index'));
 app.get('/privacy', (req, res) => res.render('privacy'));
 app.get('/terms', (req, res) => res.render('terms'));
 
+// Logging test harness (requires guildId query param)
+app.get('/logging-test', (req, res) => {
+  if (!req.isAuthenticated()) {
+    return res.redirect('/login');
+  }
+  const { guildId } = req.query;
+  if (!guildId || !/^\d+$/.test(guildId)) {
+    return res.status(400).render('error', { code: 400, message: 'Invalid or missing guildId parameter' });
+  }
+  // Verify user is admin of this guild
+  const guild = req.user.guilds?.find((g) => g.id === guildId);
+  if (!guild || !((BigInt(guild.permissions) & 0x8n) !== 0n)) {
+    return res.status(403).render('error', { code: 403, message: 'You must be an administrator of this server to access the logging test harness' });
+  }
+  res.render('logging-test', { guildId });
+});
+
 // 404
 app.use((req, res) => {
   res.status(404).render('error', { code: 404, message: 'Page not found.' });

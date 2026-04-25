@@ -301,6 +301,49 @@ router.patch('/guild/:guildId/logging', requireAuth, requireGuildAdmin, async (r
   }
 });
 
+// ── POST /api/guild/:guildId/logging/test ────────────────────
+// Send a test embed to the configured logging channel for a specific event type.
+router.post('/guild/:guildId/logging/test', requireAuth, requireGuildAdmin, async (req, res) => {
+  try {
+    const { guildId } = req.params;
+    const { eventKey } = req.body;
+
+    if (!eventKey || typeof eventKey !== 'string') {
+      return res.status(400).json({ error: 'eventKey is required' });
+    }
+
+    const cfg = await LoggingConfig.findOne({ guildId }).lean();
+    const channelId = cfg?.channels?.[eventKey];
+
+    if (!channelId) {
+      return res.status(400).json({ error: `No logging channel configured for ${eventKey}` });
+    }
+
+    // Build a test embed
+    const testEmbed = {
+      title: `🧪 Test: ${eventKey}`,
+      description: `This is a test message for **${eventKey}** event type.`,
+      color: 0x0f52ba,
+      fields: [
+        { name: 'Timestamp', value: new Date().toISOString(), inline: false },
+        { name: 'Guild ID', value: guildId, inline: true },
+        { name: 'Test Status', value: '✅ Successful', inline: true },
+      ],
+      footer: { text: 'FlynnBot Test Message' },
+    };
+
+    // Send to Discord
+    const response = await discordApi.postMessage(channelId, { embeds: [testEmbed] }).catch((e) => {
+      throw new Error(`Failed to send test to channel: ${e.message}`);
+    });
+
+    res.json({ ok: true, messageId: response.id, channelId });
+  } catch (err) {
+    console.error('[API] POST logging/test', err);
+    res.status(500).json({ error: err.message || 'Failed to send test message' });
+  }
+});
+
 // ╔══════════════════════════════════════════════════════════════╗
 // ║  MESSAGE BUILDER — ScheduledMessage CRUD + delivery         ║
 // ╚══════════════════════════════════════════════════════════════╝
@@ -581,7 +624,7 @@ function sanitiseEmbed(emb) {
 
 function sanitiseDelivery(d) {
   if (!d || typeof d !== 'object') d = {};
-  const VALID = ['template', 'channel', 'webhook', 'schedule_once', 'schedule_repeat', 'sticky', 'command'];
+  const VALID = ['template', 'channel', 'webhook', 'schedule_once', 'schedule_repeat', 'sticky', 'command', 'ephemeral', 'dm'];
   const type  = VALID.includes(d.type) ? d.type : 'template';
   return {
     type,
@@ -592,6 +635,8 @@ function sanitiseDelivery(d) {
     scheduleEnabled:       d.scheduleEnabled !== false,
     commandTrigger:        d.commandTrigger ? String(d.commandTrigger).slice(0, 100).trim() : null,
     commandRequiredRoleId: d.commandRequiredRoleId && /^\d+$/.test(String(d.commandRequiredRoleId)) ? String(d.commandRequiredRoleId) : null,
+    responseEmbeds:        Array.isArray(d.responseEmbeds) ? d.responseEmbeds.map(sanitiseEmbed).filter(Boolean) : [],
+    responseUseCommand:    d.responseUseCommand === true,
   };
 }
 

@@ -363,8 +363,8 @@ async function handleCommandTrigger(client, message) {
   if (!raw) return;
 
   const triggers = await ScheduledMessage.find({
-    guildId:         message.guild.id,
-    'delivery.type': 'command',
+    guildId: message.guild.id,
+    'delivery.type': { $in: ['command', 'ephemeral', 'dm'] },
   }).lean().catch(() => []);
 
   for (const msg of triggers) {
@@ -391,14 +391,30 @@ async function handleCommandTrigger(client, message) {
       channel: message.channel,
     };
 
-    const payload = buildMessagePayload(msg, ctx);
-    if (!payload.content && !payload.embeds?.length) continue;
-
-    const targetChannelId = msg.delivery.channelId;
-    if (targetChannelId && targetChannelId !== message.channel.id) {
-      await sendToChannel(client, targetChannelId, payload);
+    const deliveryType = msg.delivery.type;
+    
+    // For ephemeral/DM, send only embeds (no content/action rows)
+    if (deliveryType === 'ephemeral') {
+      const embeds = msg.delivery.responseEmbeds || msg.embeds || [];
+      if (embeds.length > 0) {
+        await message.reply({ embeds, flags: 'Ephemeral' }).catch(() => {});
+      }
+    } else if (deliveryType === 'dm') {
+      const embeds = msg.delivery.responseEmbeds || msg.embeds || [];
+      if (embeds.length > 0) {
+        await message.author.send({ embeds }).catch(() => {});
+      }
     } else {
-      await message.channel.send(payload).catch(() => {});
+      // Original command trigger (sends to channel or original channel)
+      const payload = buildMessagePayload(msg, ctx);
+      if (!payload.content && !payload.embeds?.length) continue;
+
+      const targetChannelId = msg.delivery.channelId;
+      if (targetChannelId && targetChannelId !== message.channel.id) {
+        await sendToChannel(client, targetChannelId, payload);
+      } else {
+        await message.channel.send(payload).catch(() => {});
+      }
     }
   }
 }
