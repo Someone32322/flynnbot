@@ -6,7 +6,8 @@
   "main": "src/index.js",
   "scripts": {
     "dev": "node src/index.js",
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "sync:bot-commands": "node scripts/sync-bot-commands.js"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

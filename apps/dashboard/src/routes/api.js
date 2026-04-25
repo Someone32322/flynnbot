@@ -9,8 +9,10 @@ const { ReactionRole } = require('../models/ReactionRole');
 const { ScheduledMessage } = require('../models/ScheduledMessage');
 const discordApi = require('../lib/discord');
 
-// All bot command metadata (name → { category, description, usage, aliases })
-const COMMAND_META = require(path.join(__dirname, '../../../bot/src/commands/meta.js'));
+// Dashboard-local command manifest so this app can run outside the monorepo.
+const COMMAND_MANIFEST = require(path.join(__dirname, '../commands/manifest.json'));
+const COMMAND_META = COMMAND_MANIFEST.meta || {};
+const COMMAND_DATA = COMMAND_MANIFEST.commandData || {};
 
 // ── Auth guard ────────────────────────────────────────────────
 function requireAuth(req, res, next) {
@@ -119,13 +121,9 @@ router.post('/guild/:guildId/commands/:name/enable', requireAuth, requireGuildAd
     const meta = COMMAND_META[name];
     if (!meta || meta.globalOnly) return res.status(404).json({ error: 'Command not found' });
 
-    // Load the actual command JSON from the bot
-    const botCommandPath = path.join(__dirname, '../../../bot/src/commands');
-    let commandData = null;
-    try {
-      commandData = findCommandData(botCommandPath, name);
-    } catch (e) {
-      return res.status(500).json({ error: 'Could not load command data from bot' });
+    const commandData = COMMAND_DATA[name];
+    if (!commandData) {
+      return res.status(500).json({ error: `Command data missing for "${name}" in dashboard manifest` });
     }
 
     // Register in Discord guild
@@ -214,9 +212,9 @@ router.patch('/guild/:guildId/commands/:name', requireAuth, requireGuildAdmin, a
 
     const cmdSettings = config.commandSettings?.get(name);
     if (cmdSettings?.discordCommandId && req.body.customDescription !== undefined) {
-      const botCommandPath = path.join(__dirname, '../../../bot/src/commands');
       try {
-        const commandData = findCommandData(botCommandPath, name);
+        const commandData = COMMAND_DATA[name];
+        if (!commandData) throw new Error(`Command data missing for "${name}" in dashboard manifest`);
         const desc = req.body.customDescription?.trim() || commandData.description;
         await discordApi.updateGuildCommand(guildId, cmdSettings.discordCommandId, {
           ...commandData,
@@ -263,22 +261,6 @@ router.get('/guild/:guildId/channels', requireAuth, requireGuildAdmin, async (re
     res.status(500).json({ error: 'Failed to fetch channels' });
   }
 });
-
-// ── Helper: find and return a command's .toJSON() data ────────
-const fs = require('fs');
-function findCommandData(dir, name) {
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      try { return findCommandData(full, name); } catch (_) {}
-    } else if (entry.isFile() && entry.name.endsWith('.js')) {
-      delete require.cache[require.resolve(full)];
-      const cmd = require(full);
-      if (cmd?.data?.name === name && cmd.data.toJSON) return cmd.data.toJSON();
-    }
-  }
-  throw new Error(`Command "${name}" not found`);
-}
 
 // ── GET /api/guild/:guildId/logging ──────────────────────────
 router.get('/guild/:guildId/logging', requireAuth, requireGuildAdmin, async (req, res) => {
