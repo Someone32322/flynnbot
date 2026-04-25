@@ -234,6 +234,7 @@ const ALL_EVENTS = LOG_CATEGORIES.reduce((acc, cat) => [...acc, ...cat.events], 
 const EVENT_MAP = Object.fromEntries(ALL_EVENTS.map(e => [e.key, e]));
 
 let _loggingInitDone = false;
+let _channelOptions = [];
 
 function getLoggingContainer() {
   return document.getElementById('loggingContent') || document.getElementById('logging-container');
@@ -273,111 +274,108 @@ async function initLogging() {
 }
 
 async function loadLoggingData(guildId) {
-  const resp = await fetch(`/api/guild/${guildId}/logging`, { headers: { "Content-Type": "application/json" } });
-  if (!resp.ok) return console.error("[Logging] Failed to load");
-  const cfg = await resp.json();
+  const [channelsResp, loggingResp] = await Promise.all([
+    fetch(`/api/guild/${guildId}/channels`, { headers: { "Content-Type": "application/json" } }).catch(() => null),
+    fetch(`/api/guild/${guildId}/logging`, { headers: { "Content-Type": "application/json" } }).catch(() => null),
+  ]);
+
+  if (!loggingResp?.ok) {
+    console.error("[Logging] Failed to load logging config");
+    window.loggingConfig = {};
+    return;
+  }
+
+  const cfg = await loggingResp.json();
   window.loggingConfig = cfg?.channels || {};
+
+  if (channelsResp?.ok) {
+    const channels = await channelsResp.json();
+    _channelOptions = (channels || []).filter((c) => [0, 5, 15, 16].includes(c.type));
+  } else {
+    _channelOptions = [];
+  }
 }
 
 function renderLogging(guildId) {
   const container = getLoggingContainer();
   if (!container) return;
-  container.innerHTML = '';
+  const categoryHtml = LOG_CATEGORIES.map((cat) => {
+    const rows = cat.events.map((event) => renderEventRow(event)).join('');
+    return `
+      <details class="logging-category" open>
+        <summary class="logging-category-header">
+          <span class="logging-cat-arrow">▶</span>
+          <span class="logging-cat-label">${escapeHtml(cat.label)}</span>
+          <span class="logging-cat-count">${cat.events.length} events</span>
+        </summary>
+        <div class="logging-category-body">${rows}</div>
+      </details>
+    `;
+  }).join('');
 
-  const nav = document.createElement('nav');
-  nav.className = 'logging-category-nav';
-  
-  LOG_CATEGORIES.forEach(cat => {
-    const btn = document.createElement('button');
-    btn.className = 'logging-category-btn';
-    btn.dataset.category = cat.label;
-    btn.innerHTML = `${cat.icon} ${cat.label}`;
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.logging-category-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      renderEventCards(cat.label);
+  container.innerHTML = `<div class="logging-categories">${categoryHtml}</div>`;
+
+  container.querySelectorAll('.logging-channel-select').forEach((selectEl) => {
+    selectEl.addEventListener('change', () => {
+      const key = selectEl.dataset.eventKey;
+      window.loggingConfig[key] = selectEl.value || null;
     });
-    nav.appendChild(btn);
   });
 
-  container.appendChild(nav);
-
-  const content = document.createElement('div');
-  content.id = 'logging-events-grid';
-  container.appendChild(content);
-
-  // Render first category
-  document.querySelectorAll('.logging-category-btn')[0]?.click();
+  container.querySelectorAll('.logging-test-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const key = btn.dataset.eventKey;
+      btn.disabled = true;
+      const oldText = btn.textContent;
+      btn.textContent = 'Testing...';
+      try {
+        const resp = await fetch(`/api/guild/${guildId}/logging/test`, {
+          method: 'POST',
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ eventKey: key }),
+        });
+        btn.textContent = resp.ok ? 'Sent' : 'Failed';
+      } catch {
+        btn.textContent = 'Failed';
+      } finally {
+        setTimeout(() => {
+          btn.textContent = oldText;
+          btn.disabled = false;
+        }, 1200);
+      }
+    });
+  });
 
   const saveRow = getLoggingSaveRow();
   if (saveRow) saveRow.style.display = 'flex';
 }
 
-function renderEventCards(categoryLabel) {
-  const category = LOG_CATEGORIES.find(c => c.label === categoryLabel);
-  if (!category) return;
+function renderEventRow(event) {
+  const selected = window.loggingConfig?.[event.key] || '';
+  const options = ['<option value="">Not logging</option>']
+    .concat(_channelOptions.map((ch) => {
+      const isSelected = ch.id === selected ? ' selected' : '';
+      return `<option value="${escapeHtml(ch.id)}"${isSelected}>#${escapeHtml(ch.name || ch.id)}</option>`;
+    }))
+    .join('');
 
-  const grid = document.getElementById('logging-events-grid');
-  grid.innerHTML = '';
-
-  category.events.forEach(event => {
-    const card = document.createElement('div');
-    card.className = 'logging-event-card';
-    card.dataset.eventKey = event.key;
-    
-    const isConfigured = !!window.loggingConfig?.[event.key];
-    card.classList.toggle('configured', isConfigured);
-
-    card.innerHTML = `
-      <div class="event-header">
-        <h3>${event.name}</h3>
-        <span class="event-key">${event.key}</span>
+  return `
+    <div class="logging-event-row">
+      <span class="logging-event-label" title="${escapeHtml(event.description || event.name)}">${escapeHtml(event.name)}</span>
+      <div style="display:flex;align-items:center;gap:0.5rem;min-width:340px;justify-content:flex-end">
+        <select class="logging-channel-select" data-event-key="${escapeHtml(event.key)}">${options}</select>
+        <button class="btn btn-sm logging-test-btn" data-event-key="${escapeHtml(event.key)}">Test</button>
       </div>
-      <p class="event-desc">${event.description}</p>
-      <div class="event-config">
-        <input type="text" placeholder="Channel ID or search..." class="channel-input" value="${window.loggingConfig?.[event.key] || ''}" data-event-key="${event.key}">
-        <button class="test-btn" data-event-key="${event.key}">Send Test</button>
-      </div>
-    `;
+    </div>
+  `;
+}
 
-    card.addEventListener('click', (e) => {
-      if (!e.target.classList.contains('channel-input') && !e.target.classList.contains('test-btn')) {
-        card.classList.toggle('expanded');
-      }
-    });
-
-    const inputEl = card.querySelector('.channel-input');
-    inputEl.addEventListener('change', () => {
-      window.loggingConfig[event.key] = inputEl.value || null;
-      card.classList.toggle('configured', !!inputEl.value);
-    });
-
-    const testBtn = card.querySelector('.test-btn');
-    testBtn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      testBtn.disabled = true;
-      testBtn.textContent = '⏳ Testing...';
-      
-      const guildId = document.getElementById('pageData')?.dataset?.guildId;
-      const resp = await fetch(`/api/guild/${guildId}/logging/test`, {
-        method: 'POST',
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ eventKey: event.key }),
-      }).catch(() => null);
-
-      if (resp?.ok) {
-        testBtn.textContent = '✅ Sent!';
-        testBtn.style.backgroundColor = '#2ecc71';
-        setTimeout(() => { testBtn.textContent = 'Send Test'; testBtn.style.backgroundColor = ''; testBtn.disabled = false; }, 2000);
-      } else {
-        testBtn.textContent = '❌ Failed';
-        testBtn.style.backgroundColor = '#e74c3c';
-        setTimeout(() => { testBtn.textContent = 'Send Test'; testBtn.style.backgroundColor = ''; testBtn.disabled = false; }, 2000);
-      }
-    });
-
-    grid.appendChild(card);
-  });
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 async function saveLogging(guildId) {
@@ -415,7 +413,6 @@ window.loggingExports = {
   initLogging,
   loadLoggingData,
   renderLogging,
-  renderEventCards,
   saveLogging,
 };
 
