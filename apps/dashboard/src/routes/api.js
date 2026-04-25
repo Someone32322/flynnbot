@@ -306,17 +306,21 @@ router.patch('/guild/:guildId/logging', requireAuth, requireGuildAdmin, async (r
 router.post('/guild/:guildId/logging/test', requireAuth, requireGuildAdmin, async (req, res) => {
   try {
     const { guildId } = req.params;
-    const { eventKey } = req.body;
+    const { eventKey, channelId } = req.body;
 
     if (!eventKey || typeof eventKey !== 'string') {
       return res.status(400).json({ error: 'eventKey is required' });
     }
 
-    const cfg = await LoggingConfig.findOne({ guildId }).lean();
-    const channelId = cfg?.channels?.[eventKey];
+    if (channelId != null && channelId !== '' && (typeof channelId !== 'string' || !/^\d+$/.test(channelId))) {
+      return res.status(400).json({ error: 'channelId must be a numeric string' });
+    }
 
-    if (!channelId) {
-      return res.status(400).json({ error: `No logging channel configured for ${eventKey}` });
+    const cfg = await LoggingConfig.findOne({ guildId }).lean();
+    const targetChannelId = channelId || cfg?.channels?.[eventKey];
+
+    if (!targetChannelId) {
+      return res.status(400).json({ error: `No logging channel configured for ${eventKey}. Select a channel or save configuration first.` });
     }
 
     // Build a test embed
@@ -333,11 +337,11 @@ router.post('/guild/:guildId/logging/test', requireAuth, requireGuildAdmin, asyn
     };
 
     // Send to Discord
-    const response = await discordApi.postMessage(channelId, { embeds: [testEmbed] }).catch((e) => {
+    const response = await discordApi.postMessage(targetChannelId, { embeds: [testEmbed] }).catch((e) => {
       throw new Error(`Failed to send test to channel: ${e.message}`);
     });
 
-    res.json({ ok: true, messageId: response.id, channelId });
+    res.json({ ok: true, messageId: response.id, channelId: targetChannelId });
   } catch (err) {
     console.error('[API] POST logging/test', err);
     res.status(500).json({ error: err.message || 'Failed to send test message' });

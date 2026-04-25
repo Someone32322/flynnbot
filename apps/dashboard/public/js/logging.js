@@ -303,12 +303,13 @@ function renderLogging(guildId) {
   if (!container) return;
   const bulkChannelOptions = renderChannelOptions('');
   const categoryHtml = LOG_CATEGORIES.map((cat) => {
+    const categoryLabel = formatCategoryLabel(cat.label);
     const rows = cat.events.map((event) => renderEventRow(event)).join('');
     return `
       <details class="logging-category" open>
         <summary class="logging-category-header">
           <span class="logging-cat-arrow">▶</span>
-          <span class="logging-cat-label">${escapeHtml(cat.label)}</span>
+          <span class="logging-cat-label">${escapeHtml(categoryLabel)}</span>
           <span class="logging-cat-count">${cat.events.length} events</span>
         </summary>
         <div class="logging-category-body">${rows}</div>
@@ -405,6 +406,8 @@ function renderLogging(guildId) {
     btn.addEventListener('click', async () => {
       if (!_testButtonsEnabled) return;
       const key = btn.dataset.eventKey;
+      const channelSelect = container.querySelector(`.logging-channel-select[data-event-key="${CSS.escape(key)}"]`);
+      const selectedChannelId = channelSelect?.value || null;
       btn.disabled = true;
       const oldText = btn.textContent;
       btn.textContent = 'Testing...';
@@ -412,7 +415,7 @@ function renderLogging(guildId) {
         const resp = await fetch(`/api/guild/${guildId}/logging/test`, {
           method: 'POST',
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ eventKey: key }),
+          body: JSON.stringify({ eventKey: key, channelId: selectedChannelId }),
         });
         btn.textContent = resp.ok ? 'Sent' : 'Failed';
       } catch {
@@ -431,6 +434,12 @@ function renderLogging(guildId) {
 
   updateBulkSelectionState(container);
   updateTestButtonsState(container);
+}
+
+function formatCategoryLabel(rawLabel) {
+  return String(rawLabel || '')
+    .replace(/\s*\(\d+\s+events?\)\s*$/i, '')
+    .trim();
 }
 
 function renderEventRow(event) {
