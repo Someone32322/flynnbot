@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-25T00:10:19.220Z",
+  "generatedAt": "2026-04-25T04:38:47.952Z",
   "source": "C:\\Users\\lone8\\Downloads\\flynnbot 2.0\\apps\\bot\\src\\commands",
   "meta": {
     "ping": {
@@ -391,11 +391,156 @@
       "description": "Set slowmode delay on a channel.",
       "usage": "/slowmode <seconds> [channel]",
       "aliases": []
+    },
+    "purge": {
+      "category": "Moderation",
+      "description": "Bulk delete recent messages in a channel.",
+      "usage": "/purge <amount> [user]",
+      "aliases": []
+    },
+    "rank": {
+      "category": "Levels",
+      "description": "Fetch a user's XP, level, and rank in this server.",
+      "usage": "/rank [user]",
+      "aliases": []
+    },
+    "leaderboard": {
+      "category": "Levels",
+      "description": "Show the XP leaderboard for this server.",
+      "usage": "/leaderboard [limit] [page]",
+      "aliases": []
+    },
+    "level-set": {
+      "category": "Levels",
+      "description": "Set a user's level manually.",
+      "usage": "/level-set <user> <level>",
+      "aliases": []
+    },
+    "xp-set": {
+      "category": "Levels",
+      "description": "Set a user's XP directly.",
+      "usage": "/xp-set <user> <xp>",
+      "aliases": []
+    },
+    "xp-add": {
+      "category": "Levels",
+      "description": "Add XP to a user and process level-up rewards.",
+      "usage": "/xp-add <user> <amount>",
+      "aliases": []
+    },
+    "xp-remove": {
+      "category": "Levels",
+      "description": "Remove XP from a user and recalculate level.",
+      "usage": "/xp-remove <user> <amount>",
+      "aliases": []
+    },
+    "level-reset": {
+      "category": "Levels",
+      "description": "Reset a user's XP and level to defaults.",
+      "usage": "/level-reset <user> <confirm>",
+      "aliases": []
+    },
+    "level-toggle": {
+      "category": "Levels",
+      "description": "Enable or disable leveling for this server.",
+      "usage": "/level-toggle <enabled>",
+      "aliases": []
+    },
+    "level-config": {
+      "category": "Levels",
+      "description": "Display current leveling configuration.",
+      "usage": "/level-config",
+      "aliases": []
+    },
+    "xp-rate": {
+      "category": "Levels",
+      "description": "Set XP earned per message.",
+      "usage": "/xp-rate <rate>",
+      "aliases": []
+    },
+    "xp-cooldown": {
+      "category": "Levels",
+      "description": "Set cooldown between XP gains.",
+      "usage": "/xp-cooldown <seconds>",
+      "aliases": []
+    },
+    "xp-channel": {
+      "category": "Levels",
+      "description": "Add/remove/list channels where XP can be earned.",
+      "usage": "/xp-channel <action> [channel]",
+      "aliases": []
+    },
+    "level-reward-add": {
+      "category": "Levels",
+      "description": "Assign a role reward for a level.",
+      "usage": "/level-reward-add <level> <role>",
+      "aliases": []
+    },
+    "level-reward-remove": {
+      "category": "Levels",
+      "description": "Remove a role reward from a level.",
+      "usage": "/level-reward-remove <level>",
+      "aliases": []
+    },
+    "level-rewards": {
+      "category": "Levels",
+      "description": "List configured level rewards.",
+      "usage": "/level-rewards",
+      "aliases": []
+    },
+    "level-message": {
+      "category": "Levels",
+      "description": "Set or display the level-up message template.",
+      "usage": "/level-message [template]",
+      "aliases": []
+    },
+    "level-channel": {
+      "category": "Levels",
+      "description": "Set the channel for level-up messages.",
+      "usage": "/level-channel [channel]",
+      "aliases": []
+    },
+    "level-role-stack": {
+      "category": "Levels",
+      "description": "Toggle whether users keep all level reward roles.",
+      "usage": "/level-role-stack <enabled>",
+      "aliases": []
+    },
+    "xp-giveall": {
+      "category": "Levels",
+      "description": "Give XP to all non-bot members in the server.",
+      "usage": "/xp-giveall <amount>",
+      "aliases": []
+    },
+    "level-import": {
+      "category": "Levels",
+      "description": "Import leveling data from a JSON attachment.",
+      "usage": "/level-import <file>",
+      "aliases": []
+    },
+    "level-export": {
+      "category": "Levels",
+      "description": "Export leveling data to a JSON file.",
+      "usage": "/level-export",
+      "aliases": []
+    },
+    "level-formula": {
+      "category": "Levels",
+      "description": "Set or display the XP formula constants.",
+      "usage": "/level-formula [a] [b] [c]",
+      "aliases": []
     }
   },
   "commandData": {
     "help": {
-      "options": [],
+      "options": [
+        {
+          "name": "public",
+          "description": "Send this help message publicly in this channel (this run only).",
+          "required": false,
+          "type": 5
+        }
+      ],
       "name": "help",
       "description": "Learn about FlynnBot and how to enable commands for your server.",
       "type": 1
@@ -538,6 +683,373 @@
       ],
       "name": "userinfo",
       "description": "Display detailed information about a user.",
+      "type": 1
+    },
+    "leaderboard": {
+      "options": [
+        {
+          "max_value": 25,
+          "min_value": 10,
+          "type": 4,
+          "name": "limit",
+          "description": "Entries per page (10-25)",
+          "required": false
+        },
+        {
+          "min_value": 1,
+          "type": 4,
+          "name": "page",
+          "description": "Page number",
+          "required": false
+        }
+      ],
+      "name": "leaderboard",
+      "description": "Show the server XP leaderboard.",
+      "type": 1
+    },
+    "level-channel": {
+      "options": [
+        {
+          "channel_types": [
+            0,
+            5
+          ],
+          "name": "channel",
+          "description": "Target channel",
+          "required": false,
+          "type": 7
+        }
+      ],
+      "name": "level-channel",
+      "description": "Set where level-up messages are sent.",
+      "type": 1
+    },
+    "level-config": {
+      "options": [],
+      "name": "level-config",
+      "description": "Display current leveling configuration.",
+      "type": 1
+    },
+    "level-export": {
+      "options": [],
+      "name": "level-export",
+      "description": "Export leveling data as JSON.",
+      "type": 1
+    },
+    "level-formula": {
+      "options": [
+        {
+          "type": 10,
+          "name": "a",
+          "description": "Quadratic multiplier",
+          "required": false
+        },
+        {
+          "type": 10,
+          "name": "b",
+          "description": "Linear multiplier",
+          "required": false
+        },
+        {
+          "type": 10,
+          "name": "c",
+          "description": "Base XP",
+          "required": false
+        }
+      ],
+      "name": "level-formula",
+      "description": "Set or view leveling formula constants.",
+      "type": 1
+    },
+    "level-import": {
+      "options": [
+        {
+          "name": "file",
+          "description": "JSON file",
+          "required": true,
+          "type": 11
+        }
+      ],
+      "name": "level-import",
+      "description": "Import leveling data from a JSON file.",
+      "type": 1
+    },
+    "level-message": {
+      "options": [
+        {
+          "type": 3,
+          "name": "template",
+          "description": "Template using {user}, {level}, {server}",
+          "required": false,
+          "max_length": 2000
+        }
+      ],
+      "name": "level-message",
+      "description": "Set or view the level-up message template.",
+      "type": 1
+    },
+    "level-reset": {
+      "options": [
+        {
+          "name": "user",
+          "description": "Target user",
+          "required": true,
+          "type": 6
+        },
+        {
+          "name": "confirm",
+          "description": "Must be true to confirm",
+          "required": true,
+          "type": 5
+        }
+      ],
+      "name": "level-reset",
+      "description": "Reset a user's level and XP to zero.",
+      "type": 1
+    },
+    "level-reward-add": {
+      "options": [
+        {
+          "min_value": 1,
+          "type": 4,
+          "name": "level",
+          "description": "Required level",
+          "required": true
+        },
+        {
+          "name": "role",
+          "description": "Reward role",
+          "required": true,
+          "type": 8
+        }
+      ],
+      "name": "level-reward-add",
+      "description": "Assign a role reward to a level.",
+      "type": 1
+    },
+    "level-reward-remove": {
+      "options": [
+        {
+          "min_value": 1,
+          "type": 4,
+          "name": "level",
+          "description": "Level to remove reward from",
+          "required": true
+        }
+      ],
+      "name": "level-reward-remove",
+      "description": "Remove a level role reward.",
+      "type": 1
+    },
+    "level-rewards": {
+      "options": [],
+      "name": "level-rewards",
+      "description": "List all configured level rewards.",
+      "type": 1
+    },
+    "level-role-stack": {
+      "options": [
+        {
+          "name": "enabled",
+          "description": "Keep all level roles?",
+          "required": true,
+          "type": 5
+        }
+      ],
+      "name": "level-role-stack",
+      "description": "Toggle stacking level reward roles.",
+      "type": 1
+    },
+    "level-set": {
+      "options": [
+        {
+          "name": "user",
+          "description": "Target user",
+          "required": true,
+          "type": 6
+        },
+        {
+          "min_value": 0,
+          "type": 4,
+          "name": "level",
+          "description": "Level to assign (>=0)",
+          "required": true
+        }
+      ],
+      "name": "level-set",
+      "description": "Set a user's level manually.",
+      "type": 1
+    },
+    "level-toggle": {
+      "options": [
+        {
+          "name": "enabled",
+          "description": "On/Off",
+          "required": true,
+          "type": 5
+        }
+      ],
+      "name": "level-toggle",
+      "description": "Enable or disable the leveling system.",
+      "type": 1
+    },
+    "rank": {
+      "options": [
+        {
+          "name": "user",
+          "description": "Target user",
+          "required": false,
+          "type": 6
+        }
+      ],
+      "name": "rank",
+      "description": "Fetch a user's XP, level, and rank in this server.",
+      "type": 1
+    },
+    "xp-add": {
+      "options": [
+        {
+          "name": "user",
+          "description": "Target user",
+          "required": true,
+          "type": 6
+        },
+        {
+          "min_value": 1,
+          "type": 4,
+          "name": "amount",
+          "description": "XP to add",
+          "required": true
+        }
+      ],
+      "name": "xp-add",
+      "description": "Add XP to a user.",
+      "type": 1
+    },
+    "xp-channel": {
+      "options": [
+        {
+          "type": 3,
+          "choices": [
+            {
+              "name": "Add",
+              "value": "add"
+            },
+            {
+              "name": "Remove",
+              "value": "remove"
+            },
+            {
+              "name": "Clear (all channels)",
+              "value": "clear"
+            },
+            {
+              "name": "List",
+              "value": "list"
+            }
+          ],
+          "name": "action",
+          "description": "Operation",
+          "required": true
+        },
+        {
+          "channel_types": [
+            0,
+            5
+          ],
+          "name": "channel",
+          "description": "Channel for add/remove",
+          "required": false,
+          "type": 7
+        }
+      ],
+      "name": "xp-channel",
+      "description": "Manage channels where XP can be earned.",
+      "type": 1
+    },
+    "xp-cooldown": {
+      "options": [
+        {
+          "max_value": 3600,
+          "min_value": 0,
+          "type": 4,
+          "name": "seconds",
+          "description": "Cooldown in seconds (0-3600)",
+          "required": true
+        }
+      ],
+      "name": "xp-cooldown",
+      "description": "Set cooldown between XP gains per user.",
+      "type": 1
+    },
+    "xp-giveall": {
+      "options": [
+        {
+          "max_value": 1000,
+          "min_value": 1,
+          "type": 4,
+          "name": "amount",
+          "description": "XP amount",
+          "required": true
+        }
+      ],
+      "name": "xp-giveall",
+      "description": "Give XP to all members in this server.",
+      "type": 1
+    },
+    "xp-rate": {
+      "options": [
+        {
+          "max_value": 500,
+          "min_value": 1,
+          "type": 4,
+          "name": "rate",
+          "description": "XP amount (1-500)",
+          "required": true
+        }
+      ],
+      "name": "xp-rate",
+      "description": "Set XP earned per message.",
+      "type": 1
+    },
+    "xp-remove": {
+      "options": [
+        {
+          "name": "user",
+          "description": "Target user",
+          "required": true,
+          "type": 6
+        },
+        {
+          "min_value": 1,
+          "type": 4,
+          "name": "amount",
+          "description": "XP to remove",
+          "required": true
+        }
+      ],
+      "name": "xp-remove",
+      "description": "Remove XP from a user.",
+      "type": 1
+    },
+    "xp-set": {
+      "options": [
+        {
+          "name": "user",
+          "description": "Target user",
+          "required": true,
+          "type": 6
+        },
+        {
+          "min_value": 0,
+          "type": 4,
+          "name": "xp",
+          "description": "XP value (>=0)",
+          "required": true
+        }
+      ],
+      "name": "xp-set",
+      "description": "Set a user's XP directly.",
       "type": 1
     },
     "sendembed": {
@@ -1296,6 +1808,27 @@
       "name": "predefinedreasons",
       "description": "Manage predefined reasons for moderation actions.",
       "default_member_permissions": "32",
+      "type": 1
+    },
+    "purge": {
+      "options": [
+        {
+          "max_value": 100,
+          "min_value": 1,
+          "type": 4,
+          "name": "amount",
+          "description": "How many messages to remove (1-100)",
+          "required": true
+        },
+        {
+          "name": "user",
+          "description": "Only delete messages from this user",
+          "required": false,
+          "type": 6
+        }
+      ],
+      "name": "purge",
+      "description": "Bulk delete messages from this channel.",
       "type": 1
     },
     "reason": {

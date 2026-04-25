@@ -1,6 +1,7 @@
 const { MessageFlags } = require('discord.js');
 const { GuildConfig } = require('../models/GuildConfig');
 const { handleStickyForChannel, handleCommandTrigger } = require('../lib/scheduler');
+const { maybeAwardXpForMessage } = require('../lib/leveling');
 
 // Maps discord.js option type numbers to their names
 const OPTION_TYPES = { 3: 'STRING', 4: 'INTEGER', 5: 'BOOLEAN', 6: 'USER', 7: 'CHANNEL', 8: 'ROLE', 10: 'NUMBER' };
@@ -141,6 +142,9 @@ module.exports = {
   name: 'messageCreate',
   async execute(message) {
     if (message.author.bot || !message.guild) return;
+
+    // ── Leveling XP gain ───────────────────────────────────────
+    maybeAwardXpForMessage(message).catch(() => {});
 
     // ── Message Builder: sticky + command triggers ──────────────
     handleStickyForChannel(message.client, message).catch(() => {});

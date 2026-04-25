@@ -77,46 +77,22 @@ async function executeEmojiAction(opt, userId, guild, isAdd, client) {
 function buildDmPayload(opt) {
   const content = String(opt?.content || "").trim() || "No message configured.";
   if (opt?.contentType === "embed") {
-    return {
-      embeds: [{
-        color: 0x0f52ba,
-        description: content,
-      }],
+    const title = String(opt?.embedTitle || "").trim();
+    const description = String(opt?.embedDescription || "").trim() || content;
+    const footer = String(opt?.embedFooter || "").trim();
+    const color = Number.isFinite(Number(opt?.embedColor)) ? Number(opt.embedColor) : 0x0f52ba;
+
+    const embed = {
+      color,
+      description,
     };
-  }
-  return { content };
-}
+    if (title) embed.title = title;
+    if (footer) embed.footer = { text: footer };
+    if (opt?.embedImageUrl) embed.image = { url: opt.embedImageUrl };
+    if (opt?.embedThumbnailUrl) embed.thumbnail = { url: opt.embedThumbnailUrl };
 
-module.exports._executeEmojiAction = executeEmojiAction;
-
-
-async function executeEmojiAction(opt, userId, guild, isAdd, client) {
-  const member = await guild.members.fetch(userId).catch(() => null);
-  if (!member) return;
-
-  if (opt.action === "role") {
-    const role = guild.roles.cache.get(opt.roleId);
-    if (!role) return;
-    if (isAdd) {
-      await member.roles.add(role).catch(() => {});
-    } else if (opt.toggleRole) {
-      await member.roles.remove(role).catch(() => {});
-    }
-  } else if (opt.action === "dm") {
-    const user = await client.users.fetch(userId).catch(() => null);
-    if (user) await user.send(buildDmPayload(opt)).catch(() => {});
-  }
-  // 'message' action not applicable for emoji reactions (no ephemeral context)
-}
-
-function buildDmPayload(opt) {
-  const content = String(opt?.content || "").trim() || "No message configured.";
-  if (opt?.contentType === "embed") {
     return {
-      embeds: [{
-        color: 0x0f52ba,
-        description: content,
-      }],
+      embeds: [embed],
     };
   }
   return { content };

@@ -957,18 +957,28 @@ router.post('/guild/:guildId/reaction-roles/:rrId/post', requireAuth, requireGui
       return res.json({ ok: true, messageId: msgId });
     }
 
-    // button / dropdown — post or update the bot's message
-    if (!rr.channelId) return res.status(400).json({ error: 'No channel set for this reaction role group' });
-
     const body = buildMessageBody(rr);
+    // button / dropdown — support existing message URL or bot-posted message
+    if (rr.messageUrl) {
+      const match = rr.messageUrl.match(/channels\/(\d+)\/(\d+)\/(\d+)/);
+      if (!match) return res.status(400).json({ error: 'Invalid Discord message URL' });
+      const [, , chanId, msgId] = match;
+      await discordApi.editMessage(chanId, msgId, body);
+      rr.externalChannelId = chanId;
+      rr.externalMessageId = msgId;
+      rr.channelId = null;
+      rr.messageId = null;
+      await rr.save();
+      return res.json({ ok: true, messageId: msgId });
+    }
+
+    if (!rr.channelId) return res.status(400).json({ error: 'No channel set for this reaction role group' });
 
     let postedMessage;
     if (rr.messageId) {
-      // Edit existing message
       try {
         postedMessage = await discordApi.editMessage(rr.channelId, rr.messageId, body);
       } catch (editErr) {
-        // If edit failed (message deleted etc.), post a new one
         postedMessage = await discordApi.postMessage(rr.channelId, body);
       }
     } else {
@@ -976,6 +986,8 @@ router.post('/guild/:guildId/reaction-roles/:rrId/post', requireAuth, requireGui
     }
 
     rr.messageId = postedMessage.id;
+    rr.externalChannelId = null;
+    rr.externalMessageId = null;
     await rr.save();
     res.json({ ok: true, messageId: postedMessage.id });
   } catch (err) {
@@ -1003,6 +1015,12 @@ function sanitiseOptions(raw, type) {
     roleId:      o.roleId ? String(o.roleId) : null,
     toggleRole:  o.toggleRole !== false,
     content:     o.content ? String(o.content).slice(0, 2000) : null,
+    embedTitle:       o.embedTitle ? String(o.embedTitle).slice(0, 256) : null,
+    embedDescription: o.embedDescription ? String(o.embedDescription).slice(0, 4096) : null,
+    embedColor:       typeof o.embedColor === 'number' ? o.embedColor : 0x0f52ba,
+    embedFooter:      o.embedFooter ? String(o.embedFooter).slice(0, 2048) : null,
+    embedImageUrl:    isValidUrl(o.embedImageUrl) ? String(o.embedImageUrl) : null,
+    embedThumbnailUrl:isValidUrl(o.embedThumbnailUrl) ? String(o.embedThumbnailUrl) : null,
   }));
 }
 
@@ -1029,8 +1047,13 @@ function validateOptions(options, type) {
       return `Option ${n}: Select a role for the role action.`;
     }
 
-    if ((opt.action === 'message' || opt.action === 'dm') && !opt.content) {
-      return `Option ${n}: Message content is required for ${opt.action.toUpperCase()} action.`;
+    if (opt.action === 'message' || opt.action === 'dm') {
+      if (opt.contentType === 'embed' && !opt.embedDescription && !opt.embedTitle) {
+        return `Option ${n}: Embed title or description is required for ${opt.action.toUpperCase()} action.`;
+      }
+      if (opt.contentType !== 'embed' && !opt.content) {
+        return `Option ${n}: Message content is required for ${opt.action.toUpperCase()} action.`;
+      }
     }
   }
 

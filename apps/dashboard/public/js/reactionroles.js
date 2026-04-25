@@ -45,7 +45,10 @@
   }
 
   function bindUI() {
-    document.getElementById('rrNewBtn').addEventListener('click', () => openEditor(null));
+    document.getElementById('rrNewBtn').addEventListener('click', () => {
+      const useExisting = confirm('Use an existing message URL for this reaction role?\nClick OK for existing message, Cancel to create a new bot message.');
+      openEditor(null, { useExistingMessage: useExisting });
+    });
     document.getElementById('rrEditorClose').addEventListener('click', closeEditor);
     document.getElementById('rrEditorCancel').addEventListener('click', closeEditor);
     document.getElementById('rrEditorSave').addEventListener('click', () => saveRR(false));
@@ -152,7 +155,7 @@
   }
 
   // ── Editor ───────────────────────────────────────────────────
-  async function openEditor(rr) {
+  async function openEditor(rr, opts = {}) {
     if (!guildRoles.length || !guildChannels.length) {
       await hydrateGuildAssets();
     }
@@ -165,7 +168,7 @@
     document.getElementById('rrEmbedTitle').value = rr?.embedTitle ?? 'Reaction Roles';
     document.getElementById('rrEmbedDesc').value = rr?.embedDescription ?? 'Click a button or select an option below.';
     document.getElementById('rrEmbedColor').value = hexFromInt(rr?.embedColor);
-    document.getElementById('rrMessageUrl').value = rr?.messageUrl ?? '';
+    document.getElementById('rrMessageUrl').value = rr?.messageUrl ?? (opts.useExistingMessage ? 'https://discord.com/channels/' : '');
 
     // Populate channel dropdown
     const chanSel = document.getElementById('rrChannel');
@@ -280,10 +283,40 @@
                 <option value="embed" ${opt?.contentType === 'embed' ? 'selected' : ''}>Embed</option>
               </select>
             </label>
-            <label class="rr-label">
+            <label class="rr-label rr-opt-plain-wrap">
               <span class="rr-opt-content-label">Message Content</span> <span class="required">*</span>
               <textarea class="rr-opt-content" rows="3" placeholder="Message to send…" maxlength="2000">${escHtml(opt?.content ?? '')}</textarea>
             </label>
+            <div class="rr-opt-embed-wrap" style="${opt?.contentType === 'embed' ? '' : 'display:none'}">
+              <label class="rr-label">
+                Embed Title
+                <input type="text" class="rr-opt-embed-title" maxlength="256" value="${escHtml(opt?.embedTitle ?? '')}" placeholder="Optional embed title" />
+              </label>
+              <label class="rr-label">
+                Embed Description
+                <textarea class="rr-opt-embed-description" rows="3" maxlength="4096" placeholder="Embed description">${escHtml(opt?.embedDescription ?? '')}</textarea>
+              </label>
+              <div class="rr-option-row-fields">
+                <label class="rr-label">
+                  Embed Color
+                  <input type="color" class="rr-opt-embed-color" value="${hexFromInt(opt?.embedColor ?? SAPPHIRE)}" />
+                </label>
+                <label class="rr-label">
+                  Embed Footer
+                  <input type="text" class="rr-opt-embed-footer" maxlength="2048" value="${escHtml(opt?.embedFooter ?? '')}" placeholder="Optional footer text" />
+                </label>
+              </div>
+              <div class="rr-option-row-fields">
+                <label class="rr-label">
+                  Embed Image URL
+                  <input type="url" class="rr-opt-embed-image" value="${escHtml(opt?.embedImageUrl ?? '')}" placeholder="https://..." />
+                </label>
+                <label class="rr-label">
+                  Embed Thumbnail URL
+                  <input type="url" class="rr-opt-embed-thumbnail" value="${escHtml(opt?.embedThumbnailUrl ?? '')}" placeholder="https://..." />
+                </label>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -365,12 +398,16 @@
     const contentType = row.querySelector('.rr-opt-content-type')?.value || 'message';
     const contentLabel = row.querySelector('.rr-opt-content-label');
     const contentInput = row.querySelector('.rr-opt-content');
+    const plainWrap = row.querySelector('.rr-opt-plain-wrap');
+    const embedWrap = row.querySelector('.rr-opt-embed-wrap');
     if (contentLabel) {
       contentLabel.textContent = contentType === 'embed' ? 'Embed Description' : 'Message Content';
     }
     if (contentInput) {
       contentInput.placeholder = contentType === 'embed' ? 'Embed description to send…' : 'Message to send…';
     }
+    if (plainWrap) plainWrap.style.display = contentType === 'embed' ? 'none' : '';
+    if (embedWrap) embedWrap.style.display = contentType === 'embed' ? '' : 'none';
   }
 
   // ── Live preview ─────────────────────────────────────────────
@@ -441,6 +478,12 @@
       roleId:      row.querySelector('.rr-opt-role')?.value || null,
       toggleRole:  row.querySelector('.rr-opt-toggle')?.checked !== false,
       content:     row.querySelector('.rr-opt-content')?.value.trim() || null,
+      embedTitle:       row.querySelector('.rr-opt-embed-title')?.value.trim() || null,
+      embedDescription: row.querySelector('.rr-opt-embed-description')?.value.trim() || null,
+      embedColor:       intFromHex(row.querySelector('.rr-opt-embed-color')?.value || '#0f52ba'),
+      embedFooter:      row.querySelector('.rr-opt-embed-footer')?.value.trim() || null,
+      embedImageUrl:    row.querySelector('.rr-opt-embed-image')?.value.trim() || null,
+      embedThumbnailUrl:row.querySelector('.rr-opt-embed-thumbnail')?.value.trim() || null,
     }));
   }
 
@@ -463,8 +506,13 @@
         return `Option ${n}: Select a role for the role action.`;
       }
 
-      if ((opt.action === 'message' || opt.action === 'dm') && !opt.content) {
-        return `Option ${n}: Message content is required for ${opt.action.toUpperCase()} action.`;
+      if (opt.action === 'message' || opt.action === 'dm') {
+        if (opt.contentType === 'embed' && !opt.embedTitle && !opt.embedDescription) {
+          return `Option ${n}: Embed title or description is required for ${opt.action.toUpperCase()} action.`;
+        }
+        if (opt.contentType !== 'embed' && !opt.content) {
+          return `Option ${n}: Message content is required for ${opt.action.toUpperCase()} action.`;
+        }
       }
     }
 

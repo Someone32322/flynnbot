@@ -12,6 +12,12 @@ const rrOptionSchema = new mongoose.Schema(
     roleId:      { type: String, default: null },
     toggleRole:  { type: Boolean, default: true },
     content:     { type: String, default: null },
+    embedTitle:       { type: String, default: null },
+    embedDescription: { type: String, default: null },
+    embedColor:       { type: Number, default: 0x0f52ba },
+    embedFooter:      { type: String, default: null },
+    embedImageUrl:    { type: String, default: null },
+    embedThumbnailUrl:{ type: String, default: null },
   },
   { _id: false }
 );

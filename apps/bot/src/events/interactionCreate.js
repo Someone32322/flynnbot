@@ -306,12 +306,22 @@ async function executeRRAction(interaction, opt) {
 function buildResponsePayload(opt) {
   const content = String(opt?.content || "").trim() || "No message configured.";
   if (opt?.contentType === "embed") {
+    const title = String(opt?.embedTitle || "").trim();
+    const description = String(opt?.embedDescription || "").trim() || content;
+    const footer = String(opt?.embedFooter || "").trim();
+    const color = Number.isFinite(Number(opt?.embedColor)) ? Number(opt.embedColor) : 0x0f52ba;
+    const imageUrl = String(opt?.embedImageUrl || "").trim();
+    const thumbUrl = String(opt?.embedThumbnailUrl || "").trim();
+
+    const embed = new EmbedBuilder().setColor(color);
+    if (title) embed.setTitle(title);
+    if (description) embed.setDescription(description);
+    if (footer) embed.setFooter({ text: footer });
+    if (imageUrl) embed.setImage(imageUrl);
+    if (thumbUrl) embed.setThumbnail(thumbUrl);
+
     return {
-      embeds: [
-        new EmbedBuilder()
-          .setColor(0x0f52ba)
-          .setDescription(content),
-      ],
+      embeds: [embed],
     };
   }
   return { content };
@@ -410,8 +420,22 @@ async function executeARAction(interaction, opt) {
 function buildARResponsePayload(opt) {
   const content = String(opt?.content || "").trim() || "No message configured.";
   if (opt?.contentType === "embed") {
+    const title = String(opt?.embedTitle || "").trim();
+    const description = String(opt?.embedDescription || "").trim() || content;
+    const footer = String(opt?.embedFooter || "").trim();
+    const color = Number.isFinite(Number(opt?.embedColor)) ? Number(opt.embedColor) : 0x0f52ba;
+    const imageUrl = String(opt?.embedImageUrl || "").trim();
+    const thumbUrl = String(opt?.embedThumbnailUrl || "").trim();
+
+    const embed = new EmbedBuilder().setColor(color);
+    if (title) embed.setTitle(title);
+    if (description) embed.setDescription(description);
+    if (footer) embed.setFooter({ text: footer });
+    if (imageUrl) embed.setImage(imageUrl);
+    if (thumbUrl) embed.setThumbnail(thumbUrl);
+
     return {
-      embeds: [new EmbedBuilder().setColor(0x0f52ba).setDescription(content)],
+      embeds: [embed],
     };
   }
   return { content };
