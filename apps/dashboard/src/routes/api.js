@@ -855,6 +855,9 @@ router.post('/guild/:guildId/reaction-roles', requireAuth, requireGuildAdmin, as
     const sanitizedOptions = sanitiseOptions(options, type);
     const optionsError = validateOptions(sanitizedOptions, type);
     if (optionsError) return res.status(400).json({ error: optionsError });
+    if (messageUrl && type !== 'emoji') {
+      return res.status(400).json({ error: 'Existing message links are only supported for emoji reaction roles' });
+    }
 
     const rr = await ReactionRole.create({
       guildId,
@@ -888,6 +891,9 @@ router.put('/guild/:guildId/reaction-roles/:rrId', requireAuth, requireGuildAdmi
     if (!rr) return res.status(404).json({ error: 'Reaction role group not found' });
 
     if (channelId !== undefined) rr.channelId = channelId || null;
+    if (messageUrl !== undefined && messageUrl && rr.type !== 'emoji') {
+      return res.status(400).json({ error: 'Existing message links are only supported for emoji reaction roles' });
+    }
     if (messageUrl !== undefined) rr.messageUrl = messageUrl || null;
     if (embedTitle !== undefined) rr.embedTitle = embedTitle?.trim() || 'Reaction Roles';
     if (embedDescription !== undefined) rr.embedDescription = embedDescription?.trim() || '';
@@ -951,26 +957,13 @@ router.post('/guild/:guildId/reaction-roles/:rrId/post', requireAuth, requireGui
       // Seed reactions so users know what to react with
       for (const opt of rr.options) {
         if (opt.label) {
-          try { await discordApi.addReaction(chanId, msgId, opt.label); } catch (_) {}
+          try { await discordApi.addReaction(chanId, msgId, normalizeEmojiForReactionApi(opt.label)); } catch (_) {}
         }
       }
       return res.json({ ok: true, messageId: msgId });
     }
 
     const body = buildMessageBody(rr);
-    // button / dropdown — support existing message URL or bot-posted message
-    if (rr.messageUrl) {
-      const match = rr.messageUrl.match(/channels\/(\d+)\/(\d+)\/(\d+)/);
-      if (!match) return res.status(400).json({ error: 'Invalid Discord message URL' });
-      const [, , chanId, msgId] = match;
-      await discordApi.editMessage(chanId, msgId, body);
-      rr.externalChannelId = chanId;
-      rr.externalMessageId = msgId;
-      rr.channelId = null;
-      rr.messageId = null;
-      await rr.save();
-      return res.json({ ok: true, messageId: msgId });
-    }
 
     if (!rr.channelId) return res.status(400).json({ error: 'No channel set for this reaction role group' });
 
@@ -1115,6 +1108,13 @@ function parseEmoji(emoji) {
   const custom = emoji.match(/^<a?:([^:]+):(\d+)>$/);
   if (custom) return { name: custom[1], id: custom[2] };
   return { name: emoji };
+}
+
+function normalizeEmojiForReactionApi(emoji) {
+  const raw = String(emoji || '').trim();
+  const custom = raw.match(/^<a?:([^:]+):(\d+)>$/);
+  if (custom) return `${custom[1]}:${custom[2]}`;
+  return raw;
 }
 
 // ── GET /api/guild/:guildId/modconfig ────────────────────────

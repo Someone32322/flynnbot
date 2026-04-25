@@ -15,6 +15,7 @@
   let guildRoles = [];
   let guildChannels = [];
   let initialized = false;
+  let creationMode = 'new';
 
   // ── Helpers ──────────────────────────────────────────────────
   function escHtml(str) {
@@ -45,9 +46,11 @@
   }
 
   function bindUI() {
-    document.getElementById('rrNewBtn').addEventListener('click', () => {
-      const useExisting = confirm('Use an existing message URL for this reaction role?\nClick OK for existing message, Cancel to create a new bot message.');
-      openEditor(null, { useExistingMessage: useExisting });
+    document.getElementById('rrNewBtn').addEventListener('click', async () => {
+      const mode = await chooseCreateMode();
+      if (!mode) return;
+      creationMode = mode;
+      openEditor(null, { useExistingMessage: mode === 'existing' });
     });
     document.getElementById('rrEditorClose').addEventListener('click', closeEditor);
     document.getElementById('rrEditorCancel').addEventListener('click', closeEditor);
@@ -86,6 +89,43 @@
       } else if (action === 'post') {
         await postRR(id);
       }
+    });
+  }
+
+  function chooseCreateMode() {
+    return new Promise((resolve) => {
+      const backdrop = document.getElementById('rrCreateChoiceBackdrop');
+      if (!backdrop) {
+        resolve('new');
+        return;
+      }
+
+      const close = (result) => {
+        backdrop.classList.remove('open');
+        backdrop.setAttribute('aria-hidden', 'true');
+        document.body.style.overflow = '';
+        resolve(result);
+      };
+
+      const existingBtn = document.getElementById('rrCreateChoiceExisting');
+      const newBtn = document.getElementById('rrCreateChoiceNew');
+      const cancelBtn = document.getElementById('rrCreateChoiceCancel');
+
+      const onBackdropClick = (e) => {
+        if (e.target === backdrop) close(null);
+      };
+      const onExisting = () => close('existing');
+      const onNew = () => close('new');
+      const onCancel = () => close(null);
+
+      existingBtn?.addEventListener('click', onExisting, { once: true });
+      newBtn?.addEventListener('click', onNew, { once: true });
+      cancelBtn?.addEventListener('click', onCancel, { once: true });
+      backdrop.addEventListener('click', onBackdropClick, { once: true });
+
+      backdrop.classList.add('open');
+      backdrop.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
     });
   }
 
@@ -161,14 +201,23 @@
     }
 
     editingRRId = rr ? rr._id : null;
+    creationMode = rr ? (rr.messageUrl ? 'existing' : 'new') : (opts.useExistingMessage ? 'existing' : 'new');
+
+    const typeSel = document.getElementById('rrType');
     document.getElementById('rrEditorTitle').textContent = rr ? `Edit: ${rr.name}` : 'New Reaction Role Group';
     document.getElementById('rrName').value = rr?.name ?? '';
     document.getElementById('rrName').disabled = !!rr;
-    document.getElementById('rrType').value = rr?.type ?? 'button';
+    typeSel.value = rr?.type ?? (creationMode === 'existing' ? 'emoji' : 'button');
+    typeSel.disabled = !rr && creationMode === 'existing';
     document.getElementById('rrEmbedTitle').value = rr?.embedTitle ?? 'Reaction Roles';
     document.getElementById('rrEmbedDesc').value = rr?.embedDescription ?? 'Click a button or select an option below.';
     document.getElementById('rrEmbedColor').value = hexFromInt(rr?.embedColor);
     document.getElementById('rrMessageUrl').value = rr?.messageUrl ?? (opts.useExistingMessage ? 'https://discord.com/channels/' : '');
+    const modeHint = document.getElementById('rrCreateModeHint');
+    if (modeHint) {
+      modeHint.style.display = creationMode === 'existing' ? '' : 'none';
+      modeHint.textContent = 'Using existing message mode: this group is emoji-only.';
+    }
 
     // Populate channel dropdown
     const chanSel = document.getElementById('rrChannel');
@@ -199,6 +248,9 @@
     backdrop.classList.remove('open');
     document.body.style.overflow = '';
     editingRRId = null;
+    creationMode = 'new';
+    const typeSel = document.getElementById('rrType');
+    if (typeSel) typeSel.disabled = false;
   }
 
   function updateTypeVisibility() {
@@ -522,8 +574,15 @@
   // ── Save ─────────────────────────────────────────────────────
   async function saveRR(andPost) {
     const name = document.getElementById('rrName').value.trim();
-    const type = document.getElementById('rrType').value;
+    const typeSel = document.getElementById('rrType');
+    const messageUrl = document.getElementById('rrMessageUrl').value.trim() || null;
+    const type = (!editingRRId && creationMode === 'existing') ? 'emoji' : typeSel.value;
     if (!name && !editingRRId) { showToast('Name is required.', 'error'); return; }
+
+    if (messageUrl && type !== 'emoji') {
+      showToast('Existing message links are only supported for emoji reaction roles.', 'error');
+      return;
+    }
 
     const options = collectOptions();
     const optionsError = validateOptions(options, type);
@@ -532,7 +591,7 @@
     const payload = {
       type,
       channelId:        document.getElementById('rrChannel').value || null,
-      messageUrl:       document.getElementById('rrMessageUrl').value.trim() || null,
+      messageUrl,
       embedTitle:       document.getElementById('rrEmbedTitle').value.trim(),
       embedDescription: document.getElementById('rrEmbedDesc').value.trim(),
       embedColor:       intFromHex(document.getElementById('rrEmbedColor').value),

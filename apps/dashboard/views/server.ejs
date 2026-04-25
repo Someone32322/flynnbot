@@ -364,11 +364,26 @@
           <div class="commands-loading"><div class="spinner"></div>Loading…</div>
         </div>
 
+        <div id="rrCreateChoiceBackdrop" class="modal-backdrop" aria-hidden="true">
+          <div class="modal" role="dialog" aria-modal="true" style="max-width:540px">
+            <button class="modal-close" id="rrCreateChoiceCancel" aria-label="Close">✕</button>
+            <h3 style="margin-bottom:0.65rem">Create Reaction Role Group</h3>
+            <p style="font-size:0.86rem;color:var(--text-2);line-height:1.45;margin-bottom:1rem">
+              Choose how this group should be posted. Existing-message mode is emoji-only.
+            </p>
+            <div style="display:grid;gap:0.75rem">
+              <button class="btn btn-secondary" id="rrCreateChoiceNew" type="button">Create New Bot Message (Buttons/Dropdown/Emoji)</button>
+              <button class="btn btn-primary" id="rrCreateChoiceExisting" type="button">Use Existing Message Link (Emoji Only)</button>
+            </div>
+          </div>
+        </div>
+
         <!-- Reaction Role Editor Modal -->
         <div id="rrEditorBackdrop" class="modal-backdrop" aria-hidden="true">
           <div class="modal rr-editor-modal" role="dialog" aria-modal="true">
             <button class="modal-close" id="rrEditorClose" aria-label="Close">✕</button>
             <h3 id="rrEditorTitle">New Reaction Role Group</h3>
+            <p id="rrCreateModeHint" class="rr-hint" style="display:none;margin-top:0.2rem"></p>
 
             <div class="rr-editor-form">
 

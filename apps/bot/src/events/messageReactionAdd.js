@@ -17,11 +17,6 @@ module.exports = {
     const guildId = reaction.message.guildId;
     if (!guildId) return;
 
-    // Build emoji string to match stored options
-    const emoji = reaction.emoji.id
-      ? `<:${reaction.emoji.name}:${reaction.emoji.id}>`
-      : reaction.emoji.name;
-
     // ── Reaction Role (emoji type) ─────────────────────────────
     const rr = await ReactionRole.findOne({
       guildId,
@@ -30,7 +25,7 @@ module.exports = {
     }).catch(() => null);
 
     if (rr) {
-      const opt = rr.options.find((o) => o.label === emoji);
+      const opt = rr.options.find((o) => emojiMatches(o.label, reaction.emoji));
       if (opt) await executeEmojiAction(opt, user.id, reaction.message.guild, true, client);
       return;
     }
@@ -46,7 +41,7 @@ module.exports = {
 
     for (const row of sm.actionRows || []) {
       if (row.rowType !== "emoji") continue;
-      const opt = row.options.find((o) => o.label === emoji);
+      const opt = row.options.find((o) => emojiMatches(o.label, reaction.emoji));
       if (opt) {
         await executeEmojiAction(opt, user.id, reaction.message.guild, true, client);
         break;
@@ -98,4 +93,27 @@ function buildDmPayload(opt) {
   return { content };
 }
 
+function normalizeEmojiLabel(raw) {
+  const value = String(raw || "").trim();
+  if (!value) return null;
+
+  const custom = value.match(/^<a?:[^:]+:(\d+)>$/);
+  if (custom) return { kind: "custom", id: custom[1] };
+
+  if (/^\d+$/.test(value)) return { kind: "custom", id: value };
+  return { kind: "unicode", value };
+}
+
+function emojiMatches(storedLabel, reactionEmoji) {
+  const parsed = normalizeEmojiLabel(storedLabel);
+  if (!parsed || !reactionEmoji) return false;
+
+  if (parsed.kind === "custom") {
+    return Boolean(reactionEmoji.id) && String(reactionEmoji.id) === parsed.id;
+  }
+
+  return String(reactionEmoji.name || "") === parsed.value;
+}
+
 module.exports._executeEmojiAction = executeEmojiAction;
+module.exports._emojiMatches = emojiMatches;

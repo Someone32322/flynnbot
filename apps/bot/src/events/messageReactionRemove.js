@@ -1,6 +1,6 @@
 const { ReactionRole } = require("../models/ReactionRole");
 const { ScheduledMessage } = require("../models/ScheduledMessage");
-const { _executeEmojiAction } = require("./messageReactionAdd");
+const { _executeEmojiAction, _emojiMatches } = require("./messageReactionAdd");
 
 module.exports = {
   name: "messageReactionRemove",
@@ -17,10 +17,6 @@ module.exports = {
     const guildId = reaction.message.guildId;
     if (!guildId) return;
 
-    const emoji = reaction.emoji.id
-      ? `<:${reaction.emoji.name}:${reaction.emoji.id}>`
-      : reaction.emoji.name;
-
     // ── Reaction Role (emoji type) ─────────────────────────────
     const rr = await ReactionRole.findOne({
       guildId,
@@ -29,7 +25,7 @@ module.exports = {
     }).catch(() => null);
 
     if (rr) {
-      const opt = rr.options.find((o) => o.label === emoji);
+      const opt = rr.options.find((o) => _emojiMatches(o.label, reaction.emoji));
       if (opt) await _executeEmojiAction(opt, user.id, reaction.message.guild, false, client);
       return;
     }
@@ -45,7 +41,7 @@ module.exports = {
 
     for (const row of sm.actionRows || []) {
       if (row.rowType !== "emoji") continue;
-      const opt = row.options.find((o) => o.label === emoji);
+      const opt = row.options.find((o) => _emojiMatches(o.label, reaction.emoji));
       if (opt) {
         await _executeEmojiAction(opt, user.id, reaction.message.guild, false, client);
         break;
