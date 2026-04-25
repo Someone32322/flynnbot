@@ -97,6 +97,21 @@ function genericEventFields(args) {
 }
 
 function setupLogging(client) {
+  const inviteUsesByGuild = new Map();
+
+  async function refreshInviteCache(guild) {
+    try {
+      const invites = await guild.invites.fetch();
+      inviteUsesByGuild.set(guild.id, new Map(invites.map((inv) => [inv.code, inv.uses ?? 0])));
+      return invites;
+    } catch {
+      return null;
+    }
+  }
+
+  for (const guild of client.guilds.cache.values()) {
+    refreshInviteCache(guild).catch(() => null);
+  }
 
   // ─────────────────────── CHANNELS (21) ───────────────────────
   client.on("channelCreate", async (channel) => {
@@ -148,6 +163,38 @@ function setupLogging(client) {
     }, { footerText: channel.guild.name }));
   });
 
+  client.on("stageInstanceCreate", async (stage) => {
+    if (!stage.guild) return;
+    await sendLog(stage.guild, "stage_instance_create", sapphireEmbed("Stage Instance Created", {
+      Channel: stage.channelId ? "<#" + stage.channelId + ">" : "Unknown",
+      Topic: stage.topic ?? "N/A",
+      ID: "`" + stage.id + "`",
+    }, { footerText: stage.guild.name }));
+  });
+
+  client.on("stageInstanceDelete", async (stage) => {
+    if (!stage.guild) return;
+    await sendLog(stage.guild, "stage_instance_delete", sapphireEmbed("Stage Instance Deleted", {
+      Channel: stage.channelId ? "<#" + stage.channelId + ">" : "Unknown",
+      Topic: stage.topic ?? "N/A",
+      ID: "`" + stage.id + "`",
+    }, { footerText: stage.guild.name }));
+  });
+
+  client.on("stageInstanceUpdate", async (oldStage, newStage) => {
+    if (!newStage.guild) return;
+    const changes = {};
+    if (oldStage.topic !== newStage.topic) changes["Topic"] = (oldStage.topic ?? "none") + " → " + (newStage.topic ?? "none");
+    if (oldStage.privacyLevel !== newStage.privacyLevel)
+      changes["Privacy"] = String(oldStage.privacyLevel) + " → " + String(newStage.privacyLevel);
+    if (!Object.keys(changes).length) return;
+    await sendLog(newStage.guild, "stage_instance_update", sapphireEmbed("Stage Instance Updated", {
+      Channel: newStage.channelId ? "<#" + newStage.channelId + ">" : "Unknown",
+      ID: "`" + newStage.id + "`",
+      ...changes,
+    }, { footerText: newStage.guild.name }));
+  });
+
   // ─────────────────────── AUTOMOD (10) ────────────────────────
   client.on("autoModerationRuleCreate", async (rule) => {
     await sendLog(rule.guild, "automod_rule_create", sapphireEmbed("AutoMod Rule Created", {
@@ -178,10 +225,13 @@ function setupLogging(client) {
     }, { footerText: exec.guild.name }));
   });
 
-  client.on("autoModerationRuleCreate", async (rule) => {
-    await sendLog(rule.guild, "automod_rule_enable_update", sapphireEmbed("AutoMod Rule Enable Updated", {
-      Name: rule.name, ID: "`" + rule.id + "`",
-    }, { footerText: rule.guild.name }));
+  client.on("autoModerationRuleUpdate", async (oldRule, newRule) => {
+    if (oldRule.enabled === newRule.enabled) return;
+    await sendLog(newRule.guild, "automod_rule_enable_update", sapphireEmbed("AutoMod Rule Enable Updated", {
+      Name: newRule.name,
+      ID: "`" + newRule.id + "`",
+      Enabled: String(oldRule.enabled) + " → " + String(newRule.enabled),
+    }, { footerText: newRule.guild.name }));
   });
 
   client.on("autoModerationRuleUpdate", async (oldRule, newRule) => {
@@ -352,6 +402,9 @@ function setupLogging(client) {
 
   // ─────────────────────── INVITES (3) ─────────────────────────
   client.on("inviteCreate", async (invite) => {
+    const current = inviteUsesByGuild.get(invite.guild.id) ?? new Map();
+    current.set(invite.code, invite.uses ?? 0);
+    inviteUsesByGuild.set(invite.guild.id, current);
     await sendLog(invite.guild, "invite_create", sapphireEmbed("Invite Created", {
       Code: "`" + invite.code + "`",
       Channel: invite.channel ? "<#" + invite.channel.id + ">" : "N/A",
@@ -362,17 +415,27 @@ function setupLogging(client) {
   });
 
   client.on("inviteDelete", async (invite) => {
+    const current = inviteUsesByGuild.get(invite.guild.id) ?? new Map();
+    current.delete(invite.code);
+    inviteUsesByGuild.set(invite.guild.id, current);
     await sendLog(invite.guild, "invite_delete", sapphireEmbed("Invite Deleted", {
       Code: "`" + invite.code + "`",
       Channel: invite.channel ? "<#" + invite.channel.id + ">" : "N/A",
     }, { footerText: invite.guild.name }));
   });
 
-  client.on("inviteCreate", async (invite) => {
-    if (invite.uses !== undefined)
-      await sendLog(invite.guild, "invite_uses", sapphireEmbed("Invite Used", {
-        Code: "`" + invite.code + "`", Uses: String(invite.uses),
-      }, { footerText: invite.guild.name }));
+  client.on("guildMemberAdd", async (member) => {
+    const previous = inviteUsesByGuild.get(member.guild.id) ?? new Map();
+    const invites = await refreshInviteCache(member.guild);
+    if (!invites) return;
+    const used = invites.find((inv) => (inv.uses ?? 0) > (previous.get(inv.code) ?? 0));
+    if (!used) return;
+    await sendLog(member.guild, "invite_uses", sapphireEmbed("Invite Used", {
+      User: member.user.tag + " `(" + member.id + ")`",
+      Code: "`" + used.code + "`",
+      Uses: String(used.uses ?? 0),
+      Inviter: used.inviter ? "<@" + used.inviter.id + ">" : "Unknown",
+    }, { footerText: member.guild.name }));
   });
 
   // ─────────────────────── MESSAGES (6) ────────────────────────
@@ -405,6 +468,15 @@ function setupLogging(client) {
     if (!newMsg.guild) return;
     try { if (newMsg.partial) newMsg = await newMsg.fetch(); } catch { return; }
     if (newMsg.author?.bot) return;
+    const oldPinned = oldMsg.partial ? null : oldMsg.pinned;
+    if (oldPinned !== null && oldPinned !== newMsg.pinned) {
+      const av = newMsg.author?.displayAvatarURL({ extension: "png", size: 256 });
+      await sendLog(newMsg.guild, newMsg.pinned ? "message_pin" : "message_publish", sapphireEmbed(newMsg.pinned ? "Message Pinned" : "Message Unpinned", {
+        Author: (newMsg.author?.tag ?? "Unknown") + " `(" + (newMsg.author?.id ?? "?") + ")`",
+        Channel: "<#" + newMsg.channelId + ">",
+        "Jump to Message": "[Click here](" + newMsg.url + ")",
+      }, { thumbnailUrl: av, footerText: newMsg.author?.tag ?? "Unknown" }));
+    }
     const oldContent = oldMsg.partial ? null : oldMsg.content;
     const newContent = newMsg.content ?? "";
     if (oldContent !== null && oldContent === newContent) return;
@@ -416,16 +488,6 @@ function setupLogging(client) {
       Before: oldContent !== null ? (oldContent.slice(0, 400) || "*empty*") : "*not cached*",
       After: newContent.slice(0, 400) || "*empty*",
     }, { thumbnailUrl: av, footerText: newMsg.author ? newMsg.author.tag : "Unknown User" }));
-  });
-
-  client.on("messagePinUnpin", async (message) => {
-    if (!message.guild) return;
-    const isPinned = message.pinned;
-    const av = message.author?.displayAvatarURL({ extension: "png", size: 256 });
-    await sendLog(message.guild, isPinned ? "message_pin" : "message_publish", sapphireEmbed(isPinned ? "Message Pinned" : "Message Unpinned", {
-      Channel: "<#" + message.channelId + ">",
-      Author: message.author?.tag ?? "Unknown",
-    }, { thumbnailUrl: av, footerText: message.author?.tag ?? "Unknown" }));
   });
 
   // ─────────────────────── ROLES (9) ───────────────────────────
@@ -517,7 +579,10 @@ function setupLogging(client) {
   });
 
   client.on("guildMemberUpdate", async (oldM, newM) => {
-    if (oldM.nickname !== newM.nickname)
+    const rolesChanged = oldM.roles.cache.size !== newM.roles.cache.size ||
+      oldM.roles.cache.some((r) => !newM.roles.cache.has(r.id)) ||
+      newM.roles.cache.some((r) => !oldM.roles.cache.has(r.id));
+    if (rolesChanged)
       await sendLog(newM.guild, "user_role_update", sapphireEmbed("User Role Updated", {
         User: newM.user.tag, ID: "`" + newM.id + "`",
       }, { footerText: newM.user.tag }));
@@ -805,11 +870,14 @@ function setupLogging(client) {
   });
 
   // ─────────────────────── APPLICATIONS (1) ──────────────────
-  client.on("guildIntegrationUpdate", async (integration) => {
-    if (!integration.guild) return;
-    await sendLog(integration.guild, "app_command_permissions_update", sapphireEmbed("Command Permissions Updated", {
-      ID: "`" + integration.id + "`",
-    }, { footerText: integration.guild.name }));
+  client.on("applicationCommandPermissionsUpdate", async (data) => {
+    const guild = client.guilds.cache.get(data.guildId);
+    if (!guild) return;
+    await sendLog(guild, "app_command_permissions_update", sapphireEmbed("Command Permissions Updated", {
+      Application: data.applicationId ? "`" + data.applicationId + "`" : "N/A",
+      Command: data.id ? "`" + data.id + "`" : "N/A",
+      Permissions: String(data.permissions?.length ?? 0),
+    }, { footerText: guild.name }));
   });
 
   // Fallback for all remaining discord.js client events (full Events enum coverage).
@@ -855,12 +923,25 @@ function setupLogging(client) {
     if (explicitlyHandled.has(enumName)) continue;
     client.on(eventName, async (...args) => {
       const guild = resolveGuild(args, client);
-      if (!guild) return;
       const eventKey = "discord_" + toSnakeCase(enumName);
-      await sendLog(guild, eventKey, sapphireEmbed("Discord Event: " + enumName, {
+      if (guild) {
+        await sendLog(guild, eventKey, sapphireEmbed("Discord Event: " + enumName, {
+          Event: eventName,
+          ...genericEventFields(args),
+        }, { footerText: guild.name }));
+        return;
+      }
+
+      const guilds = [...client.guilds.cache.values()];
+      if (!guilds.length) return;
+      const embed = sapphireEmbed("Discord Event: " + enumName, {
         Event: eventName,
+        Scope: "Global",
         ...genericEventFields(args),
-      }, { footerText: guild.name }));
+      }, { footerText: "Global Client Event" });
+      for (const g of guilds) {
+        await sendLog(g, eventKey, embed);
+      }
     });
   }
 
