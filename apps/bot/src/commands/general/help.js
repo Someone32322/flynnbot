@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 
 const SAPPHIRE_COLOR = 0x0f52ba;
-const DASHBOARD_URL = process.env.DASHBOARD_URL || 'http://localhost:3000';
+const DASHBOARD_URL = process.env.DASHBOARD_URL || 'https://flynnbot-dashboard.onrender.com';
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -14,11 +14,11 @@ module.exports = {
       .setColor(SAPPHIRE_COLOR)
       .setDescription(
         `Commands are enabled per-server via the dashboard. Head there to configure which commands are available in this server, set up role restrictions, custom prefixes, and more.\n\n` +
-        `> **Dashboard:** [dashboard.flynnbot.app](${DASHBOARD_URL})\n` +
+        `> **Dashboard:** [https://flynnbot-dashboard.onrender.com](${DASHBOARD_URL})\n` +
         `> **Getting started:** Log in with Discord, select your server, then enable any commands you want.\n\n` +
         `> **Support:** If you have any questions or need help, join our [support server](https://discord.gg/v6VjBw9ShP).\n` +
         `> **Website:** [website](https://flynn.xyz)\n` +
-        `> **Dashboard:** [dashboard](https://dashboard.flynn.xyz)`
+        `> **Dashboard:** [dashboard](${DASHBOARD_URL})`
       )
       .setFooter({ text: 'FlynnBot • /help is the only global command — all others are enabled via the dashboard.' });
 

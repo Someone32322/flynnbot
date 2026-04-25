@@ -27,6 +27,34 @@ const embedSchema = new mongoose.Schema(
   { _id: false }
 );
 
+// ── Action Row schemas ─────────────────────────────────────────
+const arOptionSchema = new mongoose.Schema(
+  {
+    optId:       { type: String, default: () => Math.random().toString(36).slice(2, 10).toUpperCase() },
+    label:       { type: String, default: '' },
+    emoji:       { type: String, default: null },
+    description: { type: String, default: null },
+    style:       { type: String, enum: ['primary', 'secondary', 'success', 'danger', 'link'], default: 'primary' },
+    url:         { type: String, default: null },
+    action:      { type: String, enum: ['role', 'message', 'dm'], default: 'role' },
+    roleId:      { type: String, default: null },
+    toggleRole:  { type: Boolean, default: true },
+    content:     { type: String, default: null },
+    contentType: { type: String, enum: ['message', 'embed'], default: 'message' },
+  },
+  { _id: false }
+);
+
+const actionRowSchema = new mongoose.Schema(
+  {
+    rowId:       { type: String, default: () => Math.random().toString(36).slice(2, 10).toUpperCase() },
+    rowType:     { type: String, enum: ['button', 'select', 'emoji'], default: 'button' },
+    placeholder: { type: String, default: null },
+    options:     { type: [arOptionSchema], default: [] },
+  },
+  { _id: false }
+);
+
 const deliverySchema = new mongoose.Schema(
   {
     type:                  { type: String, enum: ['template', 'channel', 'webhook', 'schedule_once', 'schedule_repeat', 'sticky', 'command'], default: 'template' },
@@ -49,6 +77,7 @@ const scheduledMessageSchema = new mongoose.Schema(
     name:            { type: String, required: true },
     content:         { type: String, default: null },
     embeds:          { type: [embedSchema], default: [] },
+    actionRows:      { type: [actionRowSchema], default: [] },
     delivery:        { type: deliverySchema, default: () => ({ type: 'template' }) },
     postedMessageId: { type: String, default: null },
     postedChannelId: { type: String, default: null },

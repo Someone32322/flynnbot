@@ -117,7 +117,7 @@ async function bootstrap() {
     await client.login(process.env.DISCORD_BOT_TOKEN);
 
     // Start scheduler once client is ready (moderation timers + message builder)
-    client.once('ready', () => startScheduler(client));
+    client.once('clientReady', () => startScheduler(client));
   } catch (error) {
     console.error("Bot startup failed:", error);
     process.exit(1);

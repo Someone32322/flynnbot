@@ -181,6 +181,11 @@ function buildMessagePayload(msg, ctx) {
   const payload = {};
   if (content)       payload.content = content;
   if (embeds.length) payload.embeds  = embeds;
+
+  // Include action row components (buttons / select menus)
+  const components = buildARComponents(msg);
+  if (components.length) payload.components = components;
+
   return payload;
 }
 
@@ -195,6 +200,70 @@ async function sendToChannel(client, channelId, payload) {
     console.error(`[MsgScheduler] Failed to send to ${channelId}:`, err.message);
     return null;
   });
+}
+
+/** Seed emoji reactions on a message for emoji-type action rows */
+async function seedEmojiReactions(msg, sentMessage) {
+  if (!sentMessage) return;
+  for (const row of msg.actionRows || []) {
+    if (row.rowType !== 'emoji') continue;
+    for (const opt of row.options || []) {
+      if (opt.label) {
+        await sentMessage.react(opt.label).catch(() => {});
+      }
+    }
+  }
+}
+
+/** Build Discord component rows from ScheduledMessage action rows */
+function buildARComponents(msg) {
+  const styleMap = { primary: 1, secondary: 2, success: 3, danger: 4, link: 5 };
+  const components = [];
+  const msgId = String(msg._id);
+
+  for (const row of (msg.actionRows || []).slice(0, 5)) {
+    if (row.rowType === 'emoji') continue;
+
+    if (row.rowType === 'button') {
+      const buttons = (row.options || []).slice(0, 5)
+        .filter((o) => o.label)
+        .map((opt) => {
+          const style = styleMap[opt.style] || 1;
+          const btn = { type: 2, label: opt.label, style };
+          if (style === 5) {
+            btn.url = opt.url || 'https://discord.com';
+          } else {
+            btn.customId = `msg:btn:${msgId}:${opt.optId}`;
+          }
+          if (opt.emoji) btn.emoji = opt.emoji;
+          return btn;
+        });
+      if (buttons.length) components.push({ type: 1, components: buttons });
+    } else if (row.rowType === 'select') {
+      const options = (row.options || []).slice(0, 25)
+        .filter((o) => o.label)
+        .map((opt) => {
+          const o = { label: opt.label, value: opt.optId };
+          if (opt.description) o.description = opt.description;
+          if (opt.emoji) o.emoji = opt.emoji;
+          return o;
+        });
+      if (options.length) {
+        components.push({
+          type: 1,
+          components: [{
+            type: 3,
+            customId: `msg:sel:${msgId}:${row.rowId}`,
+            placeholder: row.placeholder || 'Select an option…',
+            minValues: 1,
+            maxValues: 1,
+            options,
+          }],
+        });
+      }
+    }
+  }
+  return components;
 }
 
 /** Run pending schedule_once / schedule_repeat messages */
@@ -221,7 +290,16 @@ async function runMessageScheduler(client) {
       continue;
     }
 
-    await sendToChannel(client, channelId, buildMessagePayload(msg));
+    const sent = await sendToChannel(client, channelId, buildMessagePayload(msg));
+
+    // Seed emoji reactions
+    if (sent) await seedEmojiReactions(msg, sent);
+
+    // Track posted message for emoji reaction lookups
+    if (sent) {
+      msg.postedMessageId = sent.id;
+      msg.postedChannelId = channelId;
+    }
 
     msg.delivery.lastRun = now;
     if (msg.delivery.type === 'schedule_repeat' && msg.delivery.intervalMins) {
@@ -270,6 +348,7 @@ async function handleStickyForChannel(client, message) {
     sticky.postedChannelId = message.channel.id;
     sticky.markModified('postedMessageId');
     await sticky.save().catch(() => {});
+    await seedEmojiReactions(sticky, sent);
   }
 }
 

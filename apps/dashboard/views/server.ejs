@@ -250,6 +250,23 @@
                 </div>
               </div>
 
+              <!-- Action Rows section -->
+              <div class="bsec open" id="actionRowsSec">
+                <div class="bsec-header" style="cursor:default">
+                  <div class="bsec-header-left">
+                    <span class="bsec-icon">🔘</span> Action Rows
+                    <small style="font-weight:400;opacity:.6;font-size:0.78rem">(up to 5 rows)</small>
+                  </div>
+                  <button class="btn btn-sm" id="builderAddRowBtn" style="margin-left:auto">+ Add Row</button>
+                </div>
+                <div class="bsec-body" id="builderActionRowsBody">
+                  <p class="bf-hint" style="margin-bottom:0.25rem">Add buttons, select menus, or emoji reaction bindings to your message. <strong>Buttons</strong> and <strong>Select Menus</strong> require the message to be sent by the bot. <strong>Emoji Reactions</strong> can be attached to any message.</p>
+                  <div id="builderActionRowsList"></div>
+                  <p id="builderActionRowsEmpty" class="bf-hint" style="background:none;border:none;padding:0;text-align:center;margin:0">No action rows yet — click <strong>+ Add Row</strong> above.</p>
+                  <button class="btn btn-sm" id="builderAttachMsgBtn" style="margin-top:0.5rem;width:100%;background:rgba(88,101,242,0.12);border-color:rgba(88,101,242,0.3);color:#a5b4fc">🔗 Attach to Existing Message</button>
+                </div>
+              </div>
+
               <!-- Variables reference (collapsible) -->
               <div class="bsec">
                 <div class="bsec-header" data-collapsible>
@@ -290,6 +307,7 @@
                     </div>
                     <div id="previewContent"></div>
                     <div id="previewEmbeds"></div>
+                    <div id="previewComponents"></div>
                   </div>
                 </div>
               </div>
@@ -308,6 +326,26 @@
 
       </section>
 
+
+      <!-- ── ATTACH TO MESSAGE MODAL ── -->
+      <div id="attachMsgBackdrop" class="modal-backdrop" aria-hidden="true">
+        <div class="modal" role="dialog" aria-modal="true" style="max-width:520px">
+          <button class="modal-close" id="attachMsgClose" aria-label="Close">✕</button>
+          <h3 style="margin-bottom:1rem">🔗 Attach to Existing Message</h3>
+          <p style="font-size:0.83rem;color:var(--text-2);margin-bottom:1.2rem;line-height:1.5">
+            Paste a Discord message link below. For <strong>buttons &amp; select menus</strong>, this must be a bot-sent message (the bot will edit it to add components). For <strong>emoji reactions</strong>, this can be any message.
+          </p>
+          <label class="rr-label" style="margin-bottom:1rem">
+            Discord Message URL <span class="required">*</span>
+            <input type="url" id="attachMsgUrl" placeholder="https://discord.com/channels/…/…/…" style="font-size:0.85rem" />
+          </label>
+          <p id="attachMsgStatus" style="font-size:0.82rem;min-height:1.1rem;margin-bottom:0.75rem;color:var(--text-2)"></p>
+          <div style="display:flex;gap:0.6rem;justify-content:flex-end">
+            <button class="btn btn-secondary" id="attachMsgCancel">Cancel</button>
+            <button class="btn btn-primary" id="attachMsgConfirm">🔗 Attach Components</button>
+          </div>
+        </div>
+      </div>
 
       <!-- ── REACTION ROLES SECTION ── -->
       <section class="dash-section" id="section-reaction-roles" data-section="reaction-roles" style="display:none">

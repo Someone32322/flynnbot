@@ -13,6 +13,8 @@
   let guildChannels = [];
   let assetsLoaded = false;
   let embedCount   = 0;      // monotonic counter for unique IDs
+  let arRowCount   = 0;      // monotonic counter for action row IDs
+  let arCompCount  = 0;      // monotonic counter for component IDs
   let initialized  = false;
 
   const DELIVERY_TYPES = [
@@ -79,6 +81,74 @@
 
     // Center empty-state "+ New Message"
     if (t.closest('#builderNewBtnEmpty')) { openEditor(null); return; }
+
+    // Action row: toggle component open/close
+    const arCompHdr = t.closest('.ar-comp-header');
+    if (arCompHdr && !t.closest('button') && !t.closest('select')) {
+      arCompHdr.closest('.ar-comp')?.classList.toggle('open');
+      return;
+    }
+
+    // Action row: add row
+    if (t.closest('#builderAddRowBtn')) { addActionRow(); return; }
+
+    // Action row: remove row
+    const removeRowBtn = t.closest('[data-action="remove-ar-row"]');
+    if (removeRowBtn) {
+      e.stopPropagation();
+      const rid = removeRowBtn.dataset.rowId;
+      document.querySelector(`.ar-row[data-row-id="${rid}"]`)?.remove();
+      syncAREmpty();
+      updatePreview();
+      return;
+    }
+
+    // Action row: add button to a button row
+    const addBtnBtn = t.closest('[data-action="add-ar-button"]');
+    if (addBtnBtn) { addARComponent(addBtnBtn.dataset.rowId, null, 'button'); return; }
+
+    // Action row: add option to a select/emoji row
+    const addOptBtn = t.closest('[data-action="add-ar-option"]');
+    if (addOptBtn) { addARComponent(addOptBtn.dataset.rowId, null, 'option'); return; }
+
+    // Action row: remove a component/option
+    const removeCompBtn = t.closest('[data-action="remove-ar-comp"]');
+    if (removeCompBtn) {
+      e.stopPropagation();
+      document.querySelector(`.ar-comp[data-comp-id="${removeCompBtn.dataset.compId}"]`)?.remove();
+      updatePreview();
+      return;
+    }
+
+    // Action row: style button click
+    const styleBtn = t.closest('.ar-style-btn');
+    if (styleBtn) {
+      const compEl = styleBtn.closest('.ar-comp');
+      if (compEl) {
+        compEl.querySelectorAll('.ar-style-btn').forEach((b) => b.classList.remove('selected'));
+        styleBtn.classList.add('selected');
+        // Store style in hidden input
+        const styleInput = compEl.querySelector('.ar-comp-style');
+        if (styleInput) styleInput.value = styleBtn.dataset.style;
+        // Show/hide URL field
+        const urlRow = compEl.querySelector('.ar-comp-url-row');
+        if (urlRow) urlRow.style.display = styleBtn.dataset.style === 'link' ? '' : 'none';
+        // Show/hide action section
+        const actionSec = compEl.querySelector('.ar-action-section');
+        if (actionSec) actionSec.style.display = styleBtn.dataset.style === 'link' ? 'none' : '';
+        updatePreview();
+      }
+      return;
+    }
+
+    // Attach to message button
+    if (t.closest('#builderAttachMsgBtn')) { openAttachModal(); return; }
+
+    // Attach modal close/cancel
+    if (t.closest('#attachMsgClose') || t.closest('#attachMsgCancel')) { closeAttachModal(); return; }
+
+    // Attach modal confirm
+    if (t.closest('#attachMsgConfirm')) { doAttach(); return; }
   }
 
   function _onSectionInput(e) {
@@ -113,7 +183,30 @@
   }
 
   function _onSectionChange(e) {
-    if ('livePreview' in e.target.dataset) updatePreview();
+    const t = e.target;
+    if ('livePreview' in t.dataset) { updatePreview(); return; }
+
+    // Action row type changed
+    if (t.classList.contains('ar-row-type-select')) {
+      const rowEl = t.closest('.ar-row');
+      if (rowEl) updateARRowVisibility(rowEl, t.value);
+      updatePreview();
+      return;
+    }
+
+    // Action select changed inside a component
+    if (t.classList.contains('ar-comp-action')) {
+      applyARActionVisibility(t.closest('.ar-comp'));
+      updatePreview();
+      return;
+    }
+
+    // Content type changed
+    if (t.classList.contains('ar-comp-content-type')) {
+      applyARActionVisibility(t.closest('.ar-comp'));
+      updatePreview();
+      return;
+    }
   }
 
   // ── Boot ─────────────────────────────────────────────────────
@@ -129,6 +222,11 @@
     document.getElementById('builderSaveBtn')?.addEventListener('click', () => saveMessage(false));
     document.getElementById('builderSendNowBtn')?.addEventListener('click', () => saveMessage(true));
     document.getElementById('builderAddEmbedBtn')?.addEventListener('click', () => addEmbed());
+
+    // Attach modal backdrop click
+    document.getElementById('attachMsgBackdrop')?.addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) closeAttachModal();
+    });
 
     // Name input live preview
     document.getElementById('builderEditorMsgName')?.addEventListener('input', updatePreview);
@@ -225,7 +323,9 @@
   // ── Editor open/close ─────────────────────────────────────────
   async function openEditor(msgOrId) {
     await loadAssets();
-    embedCount = 0;
+    embedCount  = 0;
+    arRowCount  = 0;
+    arCompCount = 0;
 
     let msg = null;
     if (msgOrId && typeof msgOrId === 'string') {
@@ -253,6 +353,15 @@
       embedsList.innerHTML = '';
       const embeds = msg?.embeds || [];
       embeds.forEach((emb) => addEmbed(emb));
+    }
+
+    // Action Rows
+    const arList = document.getElementById('builderActionRowsList');
+    if (arList) {
+      arList.innerHTML = '';
+      const actionRows = msg?.actionRows || [];
+      actionRows.forEach((row) => addActionRow(row));
+      syncAREmpty();
     }
 
     // Delivery
@@ -491,6 +600,394 @@
     updatePreview();
   }
 
+  // ── Action Row helpers ────────────────────────────────────────
+
+  function syncAREmpty() {
+    const list  = document.getElementById('builderActionRowsList');
+    const empty = document.getElementById('builderActionRowsEmpty');
+    if (!list || !empty) return;
+    empty.style.display = list.children.length ? 'none' : '';
+  }
+
+  /**
+   * Build the HTML for one action row.
+   * data — saved row object (optional, for hydrating from existing message)
+   */
+  function addActionRow(data) {
+    const list = document.getElementById('builderActionRowsList');
+    if (!list) return;
+    if (list.children.length >= 5) { showToast('Maximum 5 action rows per message', 'error'); return; }
+
+    const rowNum  = ++arRowCount;
+    const rowType = data?.rowType || 'button';
+    const rowId   = data?.rowId || `ar${rowNum}`;
+
+    const rowEl = document.createElement('div');
+    rowEl.className = 'ar-row';
+    rowEl.dataset.rowId = rowId;
+
+    rowEl.innerHTML = `
+      <div class="ar-row-header">
+        <span class="ar-row-label">Row ${rowNum}</span>
+        <select class="ar-row-type-select" data-row-id="${rowId}">
+          <option value="button"  ${rowType === 'button'  ? 'selected' : ''}>🔘 Button Row</option>
+          <option value="select"  ${rowType === 'select'  ? 'selected' : ''}>📋 Select Menu</option>
+          <option value="emoji"   ${rowType === 'emoji'   ? 'selected' : ''}>😀 Emoji Reactions</option>
+        </select>
+        <button class="btn btn-sm btn-danger" data-action="remove-ar-row" data-row-id="${rowId}" title="Remove row">✕</button>
+      </div>
+      <div class="ar-row-body">
+
+        <!-- Button Row body -->
+        <div class="ar-type-body ar-type-button" style="${rowType !== 'button' ? 'display:none' : ''}">
+          <div class="ar-components-list" id="arCompList_${rowId}"></div>
+          <button class="btn btn-sm" data-action="add-ar-button" data-row-id="${rowId}"
+            style="width:100%;margin-top:0.3rem">+ Add Button</button>
+          <p class="bf-hint" style="background:none;border:none;padding:0;font-size:0.75rem">Up to 5 buttons per row. Link buttons open a URL and don't trigger interactions.</p>
+        </div>
+
+        <!-- Select Menu body -->
+        <div class="ar-type-body ar-type-select" style="${rowType !== 'select' ? 'display:none' : ''}">
+          <label class="bf-label">Placeholder Text
+            <input type="text" class="ar-sel-placeholder" maxlength="150" data-live-preview
+              placeholder="Select an option…" value="${esc(data?.placeholder || '')}">
+          </label>
+          <div class="ar-components-list" id="arOptList_${rowId}"></div>
+          <button class="btn btn-sm" data-action="add-ar-option" data-row-id="${rowId}"
+            style="width:100%;margin-top:0.3rem">+ Add Option</button>
+          <p class="bf-hint" style="background:none;border:none;padding:0;font-size:0.75rem">Up to 25 options per select menu.</p>
+        </div>
+
+        <!-- Emoji Reactions body -->
+        <div class="ar-type-body ar-type-emoji" style="${rowType !== 'emoji' ? 'display:none' : ''}">
+          <div class="ar-components-list" id="arEmojiList_${rowId}"></div>
+          <button class="btn btn-sm" data-action="add-ar-option" data-row-id="${rowId}"
+            style="width:100%;margin-top:0.3rem">+ Add Emoji</button>
+          <p class="bf-hint" style="background:none;border:none;padding:0;font-size:0.75rem">The bot will add these emoji reactions. Use the <strong>🔗 Attach</strong> button to bind them to an existing message.</p>
+        </div>
+
+      </div>`;
+
+    // Wire up change on row type select (CSP-safe via delegation — but also direct for immediate update)
+    rowEl.querySelector('.ar-row-type-select').addEventListener('change', function () {
+      updateARRowVisibility(rowEl, this.value);
+      updatePreview();
+    });
+
+    list.appendChild(rowEl);
+
+    // Hydrate existing components
+    if (Array.isArray(data?.options)) {
+      data.options.forEach((opt) => addARComponent(rowId, opt, rowType === 'button' ? 'button' : 'option'));
+    }
+
+    syncAREmpty();
+    updatePreview();
+  }
+
+  function updateARRowVisibility(rowEl, rowType) {
+    rowEl.querySelectorAll('.ar-type-body').forEach((b) => { b.style.display = 'none'; });
+    const active = rowEl.querySelector(`.ar-type-${rowType}`);
+    if (active) active.style.display = '';
+  }
+
+  function getCompListId(rowId, rowType) {
+    if (rowType === 'button') return `arCompList_${rowId}`;
+    if (rowType === 'emoji')  return `arEmojiList_${rowId}`;
+    return `arOptList_${rowId}`;
+  }
+
+  /**
+   * Add a button (compType='button') or option/emoji (compType='option') to a row.
+   */
+  function addARComponent(rowId, data, compType) {
+    const rowEl = document.querySelector(`.ar-row[data-row-id="${rowId}"]`);
+    if (!rowEl) return;
+
+    // Determine actual row type from the select
+    const rowType = rowEl.querySelector('.ar-row-type-select')?.value || 'button';
+    const listId  = getCompListId(rowId, rowType);
+    const list    = document.getElementById(listId);
+    if (!list) return;
+
+    const maxItems = rowType === 'button' ? 5 : 25;
+    if (list.children.length >= maxItems) {
+      showToast(`Maximum ${maxItems} ${rowType === 'button' ? 'buttons' : 'options'} per row`, 'error');
+      return;
+    }
+
+    const compNum = ++arCompCount;
+    const compId  = data?.optId || `comp${compNum}`;
+    const style   = data?.style || 'primary';
+    const action  = data?.action || 'role';
+    const isEmoji = rowType === 'emoji';
+    const isBttn  = rowType === 'button';
+
+    // Title shown in collapsed header
+    const titleText = data?.label
+      ? (data.emoji ? data.emoji + ' ' + data.label : data.label)
+      : (isEmoji ? 'New Emoji' : isBttn ? 'New Button' : 'New Option');
+
+    const compEl = document.createElement('div');
+    compEl.className = 'ar-comp open';
+    compEl.dataset.compId = compId;
+    compEl.dataset.rowId  = rowId;
+
+    compEl.innerHTML = `
+      <div class="ar-comp-header">
+        <span class="ar-comp-title">${esc(titleText)}</span>
+        <span class="ar-comp-chevron">▾</span>
+        <button class="btn btn-sm btn-danger" style="font-size:0.7rem;padding:1px 7px;margin-left:0.35rem"
+          data-action="remove-ar-comp" data-comp-id="${compId}">✕</button>
+      </div>
+      <div class="ar-comp-body">
+
+        ${isEmoji ? `
+          <label class="bf-label">Emoji <span class="required">*</span>
+            <input type="text" class="ar-comp-label" maxlength="100"
+              placeholder="e.g. 👍 or &lt;:name:id&gt;" value="${esc(data?.label || '')}" data-live-preview>
+          </label>
+        ` : `
+          <div class="bf-row">
+            <label class="bf-label" style="flex:2">Label <span class="required">*</span>
+              <input type="text" class="ar-comp-label" maxlength="80"
+                placeholder="${isBttn ? 'Button label…' : 'Option label…'}" value="${esc(data?.label || '')}" data-live-preview>
+            </label>
+            <label class="bf-label">Emoji
+              <input type="text" class="ar-comp-emoji" maxlength="100"
+                placeholder="🎮" value="${esc(data?.emoji || '')}" data-live-preview>
+            </label>
+          </div>
+        `}
+
+        ${!isEmoji && !isBttn ? `
+          <label class="bf-label">Description
+            <input type="text" class="ar-comp-desc" maxlength="100"
+              placeholder="Option description (optional)" value="${esc(data?.description || '')}" data-live-preview>
+          </label>
+        ` : ''}
+
+        ${isBttn ? `
+          <label class="bf-label">Style</label>
+          <div class="ar-style-row">
+            <button type="button" class="ar-style-btn${style === 'primary'   ? ' selected' : ''}" data-style="primary">Primary</button>
+            <button type="button" class="ar-style-btn${style === 'secondary' ? ' selected' : ''}" data-style="secondary">Secondary</button>
+            <button type="button" class="ar-style-btn${style === 'success'   ? ' selected' : ''}" data-style="success">Success</button>
+            <button type="button" class="ar-style-btn${style === 'danger'    ? ' selected' : ''}" data-style="danger">Danger</button>
+            <button type="button" class="ar-style-btn${style === 'link'      ? ' selected' : ''}" data-style="link">Link</button>
+          </div>
+          <input type="hidden" class="ar-comp-style" value="${esc(style)}">
+
+          <label class="bf-label ar-comp-url-row" style="${style !== 'link' ? 'display:none' : ''}">
+            URL <span class="required">*</span>
+            <input type="url" class="ar-comp-url" placeholder="https://…" value="${esc(data?.url || '')}" data-live-preview>
+          </label>
+        ` : ''}
+
+        <div class="ar-action-section" style="${(isBttn && style === 'link') ? 'display:none' : ''}">
+          <label class="bf-label">Action <span class="required">*</span>
+            <select class="ar-comp-action">
+              <option value="role"    ${(!action || action === 'role')    ? 'selected' : ''}>Give / Remove Role</option>
+              <option value="message" ${action === 'message' ? 'selected' : ''}>Send Ephemeral Message</option>
+              <option value="dm"      ${action === 'dm'      ? 'selected' : ''}>Send DM</option>
+            </select>
+          </label>
+
+          <div class="ar-action-role" style="${action !== 'role' ? 'display:none' : ''}">
+            <label class="bf-label">Role <span class="required">*</span>
+              <select class="ar-comp-role">
+                <option value="">Select a role…</option>
+                ${guildRoles.map((r) => `<option value="${esc(r.id)}" ${data?.roleId === r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}
+              </select>
+            </label>
+            <label class="bf-toggle-row">
+              <input type="checkbox" class="ar-comp-toggle" ${data?.toggleRole !== false ? 'checked' : ''}>
+              Toggle (click again to remove role)
+            </label>
+          </div>
+
+          <div class="ar-action-msg" style="${(action !== 'message' && action !== 'dm') ? 'display:none' : ''}">
+            <label class="bf-label">Response Format
+              <select class="ar-comp-content-type">
+                <option value="message" ${(!data?.contentType || data.contentType === 'message') ? 'selected' : ''}>Plain Message</option>
+                <option value="embed"   ${data?.contentType === 'embed' ? 'selected' : ''}>Embed</option>
+              </select>
+            </label>
+            <label class="bf-label">Content <span class="required">*</span>
+              <textarea class="ar-comp-content" rows="2" maxlength="2000"
+                placeholder="Message to send…">${esc(data?.content || '')}</textarea>
+            </label>
+          </div>
+        </div>
+
+      </div>`;
+
+    // Wire up action select
+    compEl.querySelector('.ar-comp-action').addEventListener('change', () => {
+      applyARActionVisibility(compEl);
+      updatePreview();
+    });
+
+    // Live preview on any input
+    compEl.querySelectorAll('input, textarea, select').forEach((el) => {
+      el.addEventListener('input', () => {
+        // Update collapsed title when label/emoji changes
+        const labelEl = compEl.querySelector('.ar-comp-label');
+        const emojiEl = compEl.querySelector('.ar-comp-emoji');
+        const title   = compEl.querySelector('.ar-comp-title');
+        if (title && labelEl) {
+          const e2 = emojiEl?.value.trim();
+          title.textContent = labelEl.value.trim() || (isEmoji ? 'New Emoji' : isBttn ? 'New Button' : 'New Option');
+          if (e2 && !isEmoji) title.textContent = e2 + ' ' + title.textContent;
+        }
+        updatePreview();
+      });
+    });
+
+    list.appendChild(compEl);
+    updatePreview();
+  }
+
+  function applyARActionVisibility(compEl) {
+    if (!compEl) return;
+    const action  = compEl.querySelector('.ar-comp-action')?.value  || 'role';
+    const roleDiv = compEl.querySelector('.ar-action-role');
+    const msgDiv  = compEl.querySelector('.ar-action-msg');
+    if (roleDiv) roleDiv.style.display = action === 'role' ? '' : 'none';
+    if (msgDiv)  msgDiv.style.display  = (action === 'message' || action === 'dm') ? '' : 'none';
+
+    const ctSel = compEl.querySelector('.ar-comp-content-type');
+    const ctLbl = compEl.querySelector('.ar-comp-content');
+    if (ctSel && ctLbl) {
+      ctLbl.placeholder = ctSel.value === 'embed' ? 'Embed description to send…' : 'Message to send…';
+    }
+  }
+
+  /** Collect all action rows from the DOM */
+  function collectActionRows() {
+    return Array.from(document.querySelectorAll('#builderActionRowsList .ar-row')).map((rowEl) => {
+      const rowId   = rowEl.dataset.rowId;
+      const rowType = rowEl.querySelector('.ar-row-type-select')?.value || 'button';
+
+      const listId  = getCompListId(rowId, rowType);
+      const list    = document.getElementById(listId);
+      const options = list ? Array.from(list.querySelectorAll('.ar-comp')).map((compEl) => {
+        const style  = compEl.querySelector('.ar-comp-style')?.value || 'primary';
+        const action = compEl.querySelector('.ar-comp-action')?.value || 'role';
+        return {
+          optId:       compEl.dataset.compId,
+          label:       compEl.querySelector('.ar-comp-label')?.value.trim() || '',
+          emoji:       compEl.querySelector('.ar-comp-emoji')?.value.trim() || null,
+          description: compEl.querySelector('.ar-comp-desc')?.value.trim() || null,
+          style,
+          url:         compEl.querySelector('.ar-comp-url')?.value.trim() || null,
+          action,
+          roleId:      compEl.querySelector('.ar-comp-role')?.value || null,
+          toggleRole:  compEl.querySelector('.ar-comp-toggle')?.checked !== false,
+          content:     compEl.querySelector('.ar-comp-content')?.value.trim() || null,
+          contentType: compEl.querySelector('.ar-comp-content-type')?.value || 'message',
+        };
+      }) : [];
+
+      const placeholder = rowEl.querySelector('.ar-sel-placeholder')?.value.trim() || null;
+
+      return { rowId, rowType, placeholder, options };
+    });
+  }
+
+  /** Render action row preview HTML for the Discord preview panel */
+  function renderARPreview() {
+    const rows = collectActionRows();
+    if (!rows.length) return '';
+
+    const STYLE_MAP = { primary: 'dp-btn-primary', secondary: 'dp-btn-secondary', success: 'dp-btn-success', danger: 'dp-btn-danger', link: 'dp-btn-link' };
+    let html = '';
+
+    for (const row of rows) {
+      if (row.rowType === 'button' && row.options.length) {
+        html += '<div class="dp-action-row">';
+        for (const opt of row.options.slice(0, 5).filter((o) => o.label)) {
+          const cls = STYLE_MAP[opt.style] || 'dp-btn-primary';
+          const em  = opt.emoji ? `<span>${esc(opt.emoji)}</span>` : '';
+          html += `<div class="dp-btn ${cls}">${em}${esc(opt.label)}</div>`;
+        }
+        html += '</div>';
+      } else if (row.rowType === 'select' && row.options.length) {
+        const first = row.options.find((o) => o.label);
+        const ph    = row.placeholder || 'Select an option…';
+        html += `<div class="dp-action-row"><div class="dp-select">${esc(first ? first.label : ph)}</div></div>`;
+      } else if (row.rowType === 'emoji' && row.options.length) {
+        html += '<div class="dp-reactions">';
+        for (const opt of row.options.filter((o) => o.label)) {
+          html += `<div class="dp-reaction">${esc(opt.label)} <span style="font-size:0.75rem;opacity:.7">1</span></div>`;
+        }
+        html += '</div>';
+      }
+    }
+    return html;
+  }
+
+  // ── Attach to Existing Message modal ─────────────────────────
+
+  function openAttachModal() {
+    if (!editingId) {
+      showToast('Save the message first before attaching to an existing Discord message', 'error');
+      return;
+    }
+    const actionRows = collectActionRows();
+    if (!actionRows.length) {
+      showToast('Add at least one action row before attaching', 'error');
+      return;
+    }
+    document.getElementById('attachMsgUrl').value = '';
+    document.getElementById('attachMsgStatus').textContent = '';
+    const backdrop = document.getElementById('attachMsgBackdrop');
+    if (backdrop) { backdrop.setAttribute('aria-hidden', 'false'); backdrop.classList.add('open'); }
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeAttachModal() {
+    const backdrop = document.getElementById('attachMsgBackdrop');
+    if (backdrop) { backdrop.setAttribute('aria-hidden', 'true'); backdrop.classList.remove('open'); }
+    document.body.style.overflow = '';
+  }
+
+  async function doAttach() {
+    const messageUrl = document.getElementById('attachMsgUrl')?.value.trim();
+    const statusEl   = document.getElementById('attachMsgStatus');
+    const confirmBtn = document.getElementById('attachMsgConfirm');
+    if (!messageUrl) {
+      if (statusEl) statusEl.textContent = '⚠ Please paste a Discord message URL.';
+      return;
+    }
+    if (!/channels\/\d+\/\d+\/\d+/.test(messageUrl)) {
+      if (statusEl) statusEl.textContent = '⚠ Invalid URL — must be a Discord message link (discord.com/channels/…/…/…)';
+      return;
+    }
+
+    if (confirmBtn) confirmBtn.disabled = true;
+    if (statusEl) statusEl.textContent = 'Attaching…';
+
+    try {
+      const r = await fetch(`/api/guild/${guildId}/messages/${editingId}/attach`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageUrl }),
+      });
+      const result = await r.json();
+      if (!r.ok) {
+        if (statusEl) statusEl.textContent = '✗ ' + (result.error || 'Failed to attach');
+        return;
+      }
+      closeAttachModal();
+      showToast('Components attached to message! ✅', 'success');
+    } catch (e) {
+      if (statusEl) statusEl.textContent = '✗ ' + e.message;
+    } finally {
+      if (confirmBtn) confirmBtn.disabled = false;
+    }
+  }
+
   // ── Delivery section ──────────────────────────────────────────
   function populateDelivery(delivery) {
     const typeGrid = document.getElementById('deliveryTypeGrid');
@@ -626,8 +1123,9 @@
 
   // ── Preview renderer ──────────────────────────────────────────
   window.updatePreview = function () {
-    const previewContent = document.getElementById('previewContent');
-    const previewEmbeds  = document.getElementById('previewEmbeds');
+    const previewContent    = document.getElementById('previewContent');
+    const previewEmbeds     = document.getElementById('previewEmbeds');
+    const previewComponents = document.getElementById('previewComponents');
     if (!previewContent || !previewEmbeds) return;
 
     // Set timestamp
@@ -641,7 +1139,12 @@
     const embedsHtml  = Array.from(embedPanels).map((panel) => renderEmbedPreview(panel)).join('');
     previewEmbeds.innerHTML = embedsHtml || '';
 
-    if (!content && !embedsHtml) {
+    // Render action row components preview
+    if (previewComponents) {
+      previewComponents.innerHTML = renderARPreview();
+    }
+
+    if (!content && !embedsHtml && !previewComponents?.innerHTML) {
       previewContent.innerHTML = '<div class="dp-empty">Nothing to preview yet…</div>';
     }
   };
@@ -777,6 +1280,7 @@
       name,
       content,
       embeds,
+      actionRows: collectActionRows(),
       delivery: collectDelivery(),
     };
   }

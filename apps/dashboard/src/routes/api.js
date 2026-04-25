@@ -348,6 +348,7 @@ router.put('/guild/:guildId/messages/:msgId', requireAuth, requireGuildAdmin, as
     const data = sanitiseBuilderMsg(req.body);
     msg.content = data.content;
     msg.embeds   = data.embeds;
+    msg.actionRows = data.actionRows;
 
     const prevDelivery = msg.delivery.toObject ? msg.delivery.toObject() : { ...msg.delivery };
     msg.delivery = { ...prevDelivery, ...data.delivery };
@@ -364,6 +365,7 @@ router.put('/guild/:guildId/messages/:msgId', requireAuth, requireGuildAdmin, as
 
     msg.markModified('delivery');
     msg.markModified('embeds');
+    msg.markModified('actionRows');
     await msg.save();
     res.json(msg);
   } catch (err) {
@@ -413,6 +415,23 @@ router.post('/guild/:guildId/messages/:msgId/send', requireAuth, requireGuildAdm
         msg.postedMessageId = sent.id;
         msg.postedChannelId = channelId;
         await msg.save();
+      } else {
+        // Save posted message reference for all non-sticky sends
+        msg.postedMessageId = sent?.id || null;
+        msg.postedChannelId = channelId;
+        await msg.save();
+      }
+
+      // Seed emoji reactions for any emoji-type action rows
+      const emojiRows = (msg.actionRows || []).filter((r) => r.rowType === 'emoji');
+      if (emojiRows.length && sent?.id) {
+        for (const row of emojiRows) {
+          for (const opt of row.options || []) {
+            if (opt.label) {
+              await discordApi.addReaction(channelId, sent.id, opt.label).catch(() => {});
+            }
+          }
+        }
       }
     }
 
@@ -423,7 +442,59 @@ router.post('/guild/:guildId/messages/:msgId/send', requireAuth, requireGuildAdm
   }
 });
 
-// ── POST /api/guild/:guildId/messages/toggle-schedule ────────────
+// ── POST /api/guild/:guildId/messages/:msgId/attach ─────────────────
+// Attaches action rows (components + emoji reactions) to an existing Discord message.
+router.post('/guild/:guildId/messages/:msgId/attach', requireAuth, requireGuildAdmin, async (req, res) => {
+  try {
+    const { guildId, msgId } = req.params;
+    const { messageUrl } = req.body;
+
+    if (!messageUrl) return res.status(400).json({ error: 'messageUrl is required' });
+
+    const match = String(messageUrl).match(/channels\/(\d+)\/(\d+)\/(\d+)/);
+    if (!match) return res.status(400).json({ error: 'Invalid Discord message URL — must include channels/{guildId}/{channelId}/{messageId}' });
+    const [, , channelId, discordMsgId] = match;
+
+    const msg = await ScheduledMessage.findOne({ _id: msgId, guildId });
+    if (!msg) return res.status(404).json({ error: 'Message not found' });
+
+    const hasComponents = (msg.actionRows || []).some((r) => r.rowType !== 'emoji');
+    const emojiRows = (msg.actionRows || []).filter((r) => r.rowType === 'emoji');
+
+    if (hasComponents) {
+      const components = buildARComponents(msg);
+      if (components.length) {
+        await discordApi.editMessage(channelId, discordMsgId, { components });
+      }
+    }
+
+    if (emojiRows.length) {
+      for (const row of emojiRows) {
+        for (const opt of row.options || []) {
+          if (opt.label) {
+            await discordApi.addReaction(channelId, discordMsgId, opt.label).catch(() => {});
+          }
+        }
+      }
+    }
+
+    if (!hasComponents && !emojiRows.length) {
+      return res.status(400).json({ error: 'This message has no action rows to attach' });
+    }
+
+    // Save target message reference
+    msg.postedMessageId = discordMsgId;
+    msg.postedChannelId = channelId;
+    await msg.save();
+
+    res.json({ ok: true, messageId: discordMsgId, channelId });
+  } catch (err) {
+    console.error('[API] POST messages/attach', err);
+    res.status(500).json({ error: err.message || 'Failed to attach to message' });
+  }
+});
+
+// ── POST /api/guild/:guildId/messages/:msgId/toggle-schedule ────────────
 router.post('/guild/:guildId/messages/:msgId/toggle-schedule', requireAuth, requireGuildAdmin, async (req, res) => {
   try {
     const { guildId, msgId } = req.params;
@@ -466,6 +537,10 @@ function buildDiscordPayload(msg) {
   const result = {};
   if (msg.content) result.content = msg.content;
   if (embeds.length) result.embeds = embeds;
+
+  const components = buildARComponents(msg);
+  if (components.length) result.components = components;
+
   return result;
 }
 
@@ -520,13 +595,99 @@ function sanitiseDelivery(d) {
   };
 }
 
+function sanitiseAROption(o) {
+  if (!o || typeof o !== 'object') return null;
+  const STYLES = ['primary', 'secondary', 'success', 'danger', 'link'];
+  const ACTIONS = ['role', 'message', 'dm'];
+  return {
+    optId:       o.optId ? String(o.optId).slice(0, 20) : Math.random().toString(36).slice(2, 10).toUpperCase(),
+    label:       o.label ? String(o.label).slice(0, 80) : '',
+    emoji:       o.emoji ? String(o.emoji).slice(0, 100) : null,
+    description: o.description ? String(o.description).slice(0, 100) : null,
+    style:       STYLES.includes(o.style) ? o.style : 'primary',
+    url:         isValidUrl(o.url) ? String(o.url) : null,
+    action:      ACTIONS.includes(o.action) ? o.action : 'role',
+    roleId:      o.roleId && /^\d+$/.test(String(o.roleId)) ? String(o.roleId) : null,
+    toggleRole:  o.toggleRole !== false,
+    content:     o.content ? String(o.content).slice(0, 2000) : null,
+    contentType: o.contentType === 'embed' ? 'embed' : 'message',
+  };
+}
+
+function sanitiseActionRows(rows) {
+  if (!Array.isArray(rows)) return [];
+  const ROW_TYPES = ['button', 'select', 'emoji'];
+  return rows.slice(0, 5).map((row) => {
+    if (!row || typeof row !== 'object') return null;
+    const rowType = ROW_TYPES.includes(row.rowType) ? row.rowType : 'button';
+    const maxOpts = rowType === 'button' ? 5 : 25;
+    return {
+      rowId:       row.rowId ? String(row.rowId).slice(0, 20) : Math.random().toString(36).slice(2, 10).toUpperCase(),
+      rowType,
+      placeholder: row.placeholder ? String(row.placeholder).slice(0, 150) : null,
+      options:     Array.isArray(row.options) ? row.options.slice(0, maxOpts).map(sanitiseAROption).filter(Boolean) : [],
+    };
+  }).filter(Boolean);
+}
+
+function buildARComponents(msg) {
+  const styleMap = { primary: 1, secondary: 2, success: 3, danger: 4, link: 5 };
+  const components = [];
+  const msgId = String(msg._id);
+
+  for (const row of (msg.actionRows || []).slice(0, 5)) {
+    if (row.rowType === 'emoji') continue; // emoji rows are reactions, not components
+
+    if (row.rowType === 'button') {
+      const buttons = (row.options || []).slice(0, 5)
+        .filter((o) => o.label)
+        .map((opt) => {
+          const style = styleMap[opt.style] || 1;
+          const btn = { type: 2, label: opt.label, style };
+          if (style === 5) {
+            btn.url = opt.url || 'https://discord.com';
+          } else {
+            btn.custom_id = `msg:btn:${msgId}:${opt.optId}`;
+          }
+          if (opt.emoji) btn.emoji = parseEmoji(opt.emoji);
+          return btn;
+        });
+      if (buttons.length) components.push({ type: 1, components: buttons });
+    } else if (row.rowType === 'select') {
+      const options = (row.options || []).slice(0, 25)
+        .filter((o) => o.label)
+        .map((opt) => {
+          const o = { label: opt.label, value: opt.optId };
+          if (opt.description) o.description = opt.description;
+          if (opt.emoji) o.emoji = parseEmoji(opt.emoji);
+          return o;
+        });
+      if (options.length) {
+        components.push({
+          type: 1,
+          components: [{
+            type: 3,
+            custom_id: `msg:sel:${msgId}:${row.rowId}`,
+            placeholder: row.placeholder || 'Select an option…',
+            min_values: 1,
+            max_values: 1,
+            options,
+          }],
+        });
+      }
+    }
+  }
+  return components;
+}
+
 function sanitiseBuilderMsg(data) {
   if (!data || typeof data !== 'object') data = {};
   return {
-    name:     data.name ? String(data.name).slice(0, 60).trim() : undefined,
-    content:  data.content ? String(data.content).slice(0, 2000) : null,
-    embeds:   Array.isArray(data.embeds) ? data.embeds.slice(0, 10).map(sanitiseEmbed).filter(Boolean) : [],
-    delivery: sanitiseDelivery(data.delivery),
+    name:       data.name ? String(data.name).slice(0, 60).trim() : undefined,
+    content:    data.content ? String(data.content).slice(0, 2000) : null,
+    embeds:     Array.isArray(data.embeds) ? data.embeds.slice(0, 10).map(sanitiseEmbed).filter(Boolean) : [],
+    actionRows: sanitiseActionRows(data.actionRows),
+    delivery:   sanitiseDelivery(data.delivery),
   };
 }
 

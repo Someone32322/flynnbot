@@ -1,6 +1,7 @@
 const { EmbedBuilder, MessageFlags } = require("discord.js");
 const { GuildConfig } = require("../models/GuildConfig");
 const { ReactionRole } = require("../models/ReactionRole");
+const { ScheduledMessage } = require("../models/ScheduledMessage");
 const { handlePaginationButton } = require("../lib/pagination");
 
 // Commands exempt from per-guild settings checks (always accessible)
@@ -37,6 +38,18 @@ module.exports = {
     // ── Reaction Role select menus ───────────────────────────────
     if (interaction.isStringSelectMenu() && interaction.customId.startsWith("rr:sel:")) {
       await handleRRSelect(interaction);
+      return;
+    }
+
+    // ── Message Builder action row buttons ───────────────────────
+    if (interaction.isButton() && interaction.customId.startsWith("msg:btn:")) {
+      await handleMsgButton(interaction);
+      return;
+    }
+
+    // ── Message Builder action row select menus ──────────────────
+    if (interaction.isStringSelectMenu() && interaction.customId.startsWith("msg:sel:")) {
+      await handleMsgSelect(interaction);
       return;
     }
 
@@ -300,4 +313,89 @@ async function safeReply(interaction, payload) {
       await interaction.reply({ ...normalized, flags: MessageFlags.Ephemeral });
     }
   } catch (_) {}
+}
+
+// ── Message Builder action row handlers ──────────────────────
+async function handleMsgButton(interaction) {
+  try {
+    const parts = interaction.customId.split(":");
+    // msg:btn:{msgId}:{optId}
+    const msgId = parts[2];
+    const optId = parts[3];
+    const msg = await ScheduledMessage.findById(msgId).catch(() => null);
+    if (!msg) return safeReply(interaction, "This button is no longer configured.");
+
+    let opt = null;
+    for (const row of msg.actionRows || []) {
+      if (row.rowType === "button") {
+        opt = row.options.find((o) => o.optId === optId);
+        if (opt) break;
+      }
+    }
+    if (!opt) return safeReply(interaction, "This button option is no longer configured.");
+    await executeARAction(interaction, opt);
+  } catch (err) {
+    console.error("[AR] Button handler error:", err);
+    await safeReply(interaction, "An error occurred processing your request.");
+  }
+}
+
+async function handleMsgSelect(interaction) {
+  try {
+    const parts = interaction.customId.split(":");
+    // msg:sel:{msgId}:{rowId}
+    const msgId = parts[2];
+    const rowId = parts[3];
+    const msg = await ScheduledMessage.findById(msgId).catch(() => null);
+    if (!msg) return safeReply(interaction, "This menu is no longer configured.");
+
+    const row = (msg.actionRows || []).find((r) => r.rowId === rowId);
+    if (!row) return safeReply(interaction, "This menu is no longer configured.");
+
+    const selectedOptId = interaction.values[0];
+    const opt = row.options.find((o) => o.optId === selectedOptId);
+    if (!opt) return safeReply(interaction, "That option is no longer configured.");
+    await executeARAction(interaction, opt);
+  } catch (err) {
+    console.error("[AR] Select handler error:", err);
+    await safeReply(interaction, "An error occurred processing your request.");
+  }
+}
+
+async function executeARAction(interaction, opt) {
+  if (opt.action === "role") {
+    const member = interaction.member ?? await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+    if (!member) return safeReply(interaction, "Could not find your member in this server.");
+    const role = interaction.guild.roles.cache.get(opt.roleId);
+    if (!role) return safeReply(interaction, "The configured role no longer exists.");
+    const hasRole = member.roles.cache.has(opt.roleId);
+    if (opt.toggleRole && hasRole) {
+      await member.roles.remove(role);
+      return safeReply(interaction, `✅ Removed the **${role.name}** role.`);
+    } else if (!hasRole) {
+      await member.roles.add(role);
+      return safeReply(interaction, `✅ You now have the **${role.name}** role.`);
+    } else {
+      return safeReply(interaction, `You already have the **${role.name}** role.`);
+    }
+  } else if (opt.action === "message") {
+    return safeReply(interaction, buildARResponsePayload(opt));
+  } else if (opt.action === "dm") {
+    try {
+      await interaction.user.send(buildARResponsePayload(opt));
+      return safeReply(interaction, "✅ You have been sent a DM!");
+    } catch {
+      return safeReply(interaction, "❌ Failed to send you a DM. Please check your privacy settings.");
+    }
+  }
+}
+
+function buildARResponsePayload(opt) {
+  const content = String(opt?.content || "").trim() || "No message configured.";
+  if (opt?.contentType === "embed") {
+    return {
+      embeds: [new EmbedBuilder().setColor(0x0f52ba).setDescription(content)],
+    };
+  }
+  return { content };
 }
