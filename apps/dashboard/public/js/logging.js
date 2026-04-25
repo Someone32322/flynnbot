@@ -233,13 +233,43 @@ const LOG_CATEGORIES = [
 const ALL_EVENTS = LOG_CATEGORIES.reduce((acc, cat) => [...acc, ...cat.events], []);
 const EVENT_MAP = Object.fromEntries(ALL_EVENTS.map(e => [e.key, e]));
 
+let _loggingInitDone = false;
+
+function getLoggingContainer() {
+  return document.getElementById('loggingContent') || document.getElementById('logging-container');
+}
+
+function getLoggingSaveButton() {
+  return document.getElementById('loggingSaveBtn') || document.getElementById('logging-save-btn');
+}
+
+function getLoggingSaveRow() {
+  return document.getElementById('loggingSaveRow');
+}
+
+function setSaveStatus(message, ok = true) {
+  const statusEl = document.getElementById('loggingSaveStatus');
+  if (!statusEl) return;
+  statusEl.textContent = message;
+  statusEl.className = ok ? 'save-status success' : 'save-status error';
+  setTimeout(() => {
+    statusEl.textContent = '';
+    statusEl.className = 'save-status';
+  }, 3000);
+}
+
 async function initLogging() {
+  if (_loggingInitDone) return;
   const guildId = document.getElementById('pageData')?.dataset?.guildId;
   if (!guildId) return console.error("[Logging] No guild ID");
   
   await loadLoggingData(guildId);
   renderLogging(guildId);
-  document.getElementById('logging-save-btn')?.addEventListener('click', () => saveLogging(guildId));
+  const saveBtn = getLoggingSaveButton();
+  if (saveBtn) {
+    saveBtn.addEventListener('click', () => saveLogging(guildId));
+  }
+  _loggingInitDone = true;
 }
 
 async function loadLoggingData(guildId) {
@@ -250,7 +280,7 @@ async function loadLoggingData(guildId) {
 }
 
 function renderLogging(guildId) {
-  const container = document.getElementById('logging-container');
+  const container = getLoggingContainer();
   if (!container) return;
   container.innerHTML = '';
 
@@ -278,6 +308,9 @@ function renderLogging(guildId) {
 
   // Render first category
   document.querySelectorAll('.logging-category-btn')[0]?.click();
+
+  const saveRow = getLoggingSaveRow();
+  if (saveRow) saveRow.style.display = 'flex';
 }
 
 function renderEventCards(categoryLabel) {
@@ -348,20 +381,29 @@ function renderEventCards(categoryLabel) {
 }
 
 async function saveLogging(guildId) {
+  const saveBtn = getLoggingSaveButton();
+  if (saveBtn) saveBtn.disabled = true;
+
   const channels = Object.fromEntries(
     Object.entries(window.loggingConfig || {}).filter(([, v]) => v)
   );
 
-  const resp = await fetch(`/api/guild/${guildId}/logging`, {
-    method: 'PATCH',
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ channels }),
-  });
+  try {
+    const resp = await fetch(`/api/guild/${guildId}/logging`, {
+      method: 'PATCH',
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ channels }),
+    });
 
-  if (resp.ok) {
-    alert('✅ Logging configuration saved!');
-  } else {
-    alert('❌ Failed to save');
+    if (resp.ok) {
+      setSaveStatus('✅ Saved logging configuration.', true);
+    } else {
+      setSaveStatus('❌ Failed to save logging configuration.', false);
+    }
+  } catch {
+    setSaveStatus('❌ Failed to save logging configuration.', false);
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
   }
 }
 
@@ -383,3 +425,9 @@ if (document.readyState === 'loading') {
 } else {
   initLogging().catch(console.error);
 }
+
+document.addEventListener('sectionActivated', (e) => {
+  if (e.detail?.section === 'logging') {
+    initLogging().catch(console.error);
+  }
+});
