@@ -235,6 +235,8 @@ const EVENT_MAP = Object.fromEntries(ALL_EVENTS.map(e => [e.key, e]));
 
 let _loggingInitDone = false;
 let _channelOptions = [];
+let _bulkSelectMode = false;
+let _testButtonsEnabled = true;
 
 function getLoggingContainer() {
   return document.getElementById('loggingContent') || document.getElementById('logging-container');
@@ -299,6 +301,7 @@ async function loadLoggingData(guildId) {
 function renderLogging(guildId) {
   const container = getLoggingContainer();
   if (!container) return;
+  const bulkChannelOptions = renderChannelOptions('');
   const categoryHtml = LOG_CATEGORIES.map((cat) => {
     const rows = cat.events.map((event) => renderEventRow(event)).join('');
     return `
@@ -313,17 +316,94 @@ function renderLogging(guildId) {
     `;
   }).join('');
 
-  container.innerHTML = `<div class="logging-categories">${categoryHtml}</div>`;
+  container.innerHTML = `
+    <div class="logging-toolbar">
+      <div class="logging-toolbar-left">
+        <button class="btn btn-sm" id="loggingBulkModeBtn" type="button">Select Events</button>
+        <button class="btn btn-sm" id="loggingSelectAllBtn" type="button" style="display:none">Select All</button>
+        <button class="btn btn-sm" id="loggingClearSelectedBtn" type="button" style="display:none">Clear</button>
+        <span class="logging-bulk-count" id="loggingBulkCount">0 selected</span>
+      </div>
+      <div class="logging-toolbar-right">
+        <label class="logging-bulk-channel-wrap" for="loggingBulkChannel">
+          <span>Bulk Channel</span>
+          <select class="logging-channel-select" id="loggingBulkChannel">${bulkChannelOptions}</select>
+        </label>
+        <button class="btn btn-sm btn-primary" id="loggingBulkApplyBtn" type="button" disabled>Apply to Selected</button>
+        <button class="btn btn-sm" id="loggingToggleTestBtn" type="button">Test Buttons: On</button>
+      </div>
+    </div>
+    <div class="logging-categories">${categoryHtml}</div>
+  `;
+
+  const bulkModeBtn = container.querySelector('#loggingBulkModeBtn');
+  const selectAllBtn = container.querySelector('#loggingSelectAllBtn');
+  const clearSelectedBtn = container.querySelector('#loggingClearSelectedBtn');
+  const bulkApplyBtn = container.querySelector('#loggingBulkApplyBtn');
+  const bulkChannelSelect = container.querySelector('#loggingBulkChannel');
+  const toggleTestBtn = container.querySelector('#loggingToggleTestBtn');
+
+  bulkModeBtn?.addEventListener('click', () => {
+    _bulkSelectMode = !_bulkSelectMode;
+    container.classList.toggle('bulk-select-enabled', _bulkSelectMode);
+    bulkModeBtn.textContent = _bulkSelectMode ? 'Done Selecting' : 'Select Events';
+    if (!_bulkSelectMode) {
+      container.querySelectorAll('.logging-bulk-check').forEach((cb) => {
+        cb.checked = false;
+      });
+    }
+    updateBulkSelectionState(container);
+  });
+
+  selectAllBtn?.addEventListener('click', () => {
+    container.querySelectorAll('.logging-bulk-check').forEach((cb) => {
+      cb.checked = true;
+    });
+    updateBulkSelectionState(container);
+  });
+
+  clearSelectedBtn?.addEventListener('click', () => {
+    container.querySelectorAll('.logging-bulk-check').forEach((cb) => {
+      cb.checked = false;
+    });
+    updateBulkSelectionState(container);
+  });
+
+  bulkApplyBtn?.addEventListener('click', () => {
+    if (!bulkChannelSelect) return;
+    const selectedKeys = getSelectedEventKeys(container);
+    if (!selectedKeys.length) return;
+
+    const channelId = bulkChannelSelect.value || null;
+    selectedKeys.forEach((key) => {
+      window.loggingConfig[key] = channelId;
+      const eventSelect = container.querySelector(`.logging-channel-select[data-event-key="${CSS.escape(key)}"]`);
+      if (eventSelect) eventSelect.value = channelId || '';
+    });
+
+    updateBulkSelectionState(container);
+  });
+
+  toggleTestBtn?.addEventListener('click', () => {
+    _testButtonsEnabled = !_testButtonsEnabled;
+    updateTestButtonsState(container);
+  });
 
   container.querySelectorAll('.logging-channel-select').forEach((selectEl) => {
+    if (!selectEl.dataset.eventKey) return;
     selectEl.addEventListener('change', () => {
       const key = selectEl.dataset.eventKey;
       window.loggingConfig[key] = selectEl.value || null;
     });
   });
 
+  container.querySelectorAll('.logging-bulk-check').forEach((checkEl) => {
+    checkEl.addEventListener('change', () => updateBulkSelectionState(container));
+  });
+
   container.querySelectorAll('.logging-test-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
+      if (!_testButtonsEnabled) return;
       const key = btn.dataset.eventKey;
       btn.disabled = true;
       const oldText = btn.textContent;
@@ -348,26 +428,67 @@ function renderLogging(guildId) {
 
   const saveRow = getLoggingSaveRow();
   if (saveRow) saveRow.style.display = 'flex';
+
+  updateBulkSelectionState(container);
+  updateTestButtonsState(container);
 }
 
 function renderEventRow(event) {
   const selected = window.loggingConfig?.[event.key] || '';
-  const options = ['<option value="">Not logging</option>']
-    .concat(_channelOptions.map((ch) => {
-      const isSelected = ch.id === selected ? ' selected' : '';
-      return `<option value="${escapeHtml(ch.id)}"${isSelected}>#${escapeHtml(ch.name || ch.id)}</option>`;
-    }))
-    .join('');
+  const options = renderChannelOptions(selected);
 
   return `
     <div class="logging-event-row">
+      <label class="logging-bulk-check-wrap" title="Select for bulk assignment">
+        <input type="checkbox" class="logging-bulk-check" data-event-key="${escapeHtml(event.key)}" />
+      </label>
       <span class="logging-event-label" title="${escapeHtml(event.description || event.name)}">${escapeHtml(event.name)}</span>
-      <div style="display:flex;align-items:center;gap:0.5rem;min-width:340px;justify-content:flex-end">
+      <div class="logging-row-actions">
         <select class="logging-channel-select" data-event-key="${escapeHtml(event.key)}">${options}</select>
         <button class="btn btn-sm logging-test-btn" data-event-key="${escapeHtml(event.key)}">Test</button>
       </div>
     </div>
   `;
+}
+
+function renderChannelOptions(selected) {
+  return ['<option value="">Not logging</option>']
+    .concat(_channelOptions.map((ch) => {
+      const isSelected = ch.id === selected ? ' selected' : '';
+      return `<option value="${escapeHtml(ch.id)}"${isSelected}>#${escapeHtml(ch.name || ch.id)}</option>`;
+    }))
+    .join('');
+}
+
+function getSelectedEventKeys(container) {
+  return Array.from(container.querySelectorAll('.logging-bulk-check:checked'))
+    .map((cb) => cb.dataset.eventKey)
+    .filter(Boolean);
+}
+
+function updateBulkSelectionState(container) {
+  const selectedKeys = getSelectedEventKeys(container);
+  const countEl = container.querySelector('#loggingBulkCount');
+  if (countEl) countEl.textContent = `${selectedKeys.length} selected`;
+
+  const selectAllBtn = container.querySelector('#loggingSelectAllBtn');
+  const clearSelectedBtn = container.querySelector('#loggingClearSelectedBtn');
+  const bulkApplyBtn = container.querySelector('#loggingBulkApplyBtn');
+
+  if (selectAllBtn) selectAllBtn.style.display = _bulkSelectMode ? '' : 'none';
+  if (clearSelectedBtn) clearSelectedBtn.style.display = _bulkSelectMode ? '' : 'none';
+  if (bulkApplyBtn) bulkApplyBtn.disabled = !_bulkSelectMode || selectedKeys.length === 0;
+}
+
+function updateTestButtonsState(container) {
+  const toggleBtn = container.querySelector('#loggingToggleTestBtn');
+  if (toggleBtn) {
+    toggleBtn.textContent = `Test Buttons: ${_testButtonsEnabled ? 'On' : 'Off'}`;
+  }
+  container.classList.toggle('logging-tests-disabled', !_testButtonsEnabled);
+  container.querySelectorAll('.logging-test-btn').forEach((btn) => {
+    btn.disabled = !_testButtonsEnabled;
+  });
 }
 
 function escapeHtml(value) {

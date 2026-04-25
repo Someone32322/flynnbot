@@ -7,6 +7,39 @@
   margin-bottom: 1.5rem;
 }
 
+.logging-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+  padding: 0.75rem;
+  background: var(--card-bg, #1e1e2e);
+  border: 1px solid var(--border, rgba(255,255,255,.08));
+  border-radius: 8px;
+}
+
+.logging-toolbar-left,
+.logging-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.logging-bulk-channel-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary, #a0a0b0);
+}
+
+.logging-bulk-count {
+  font-size: 0.78rem;
+  opacity: 0.75;
+}
+
 .logging-category {
   background: var(--card-bg, #1e1e2e);
   border: 1px solid var(--border, rgba(255,255,255,.08));
@@ -70,6 +103,29 @@ details[open] .logging-cat-arrow {
   min-width: 0;
 }
 
+.logging-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 340px;
+  justify-content: flex-end;
+}
+
+.logging-bulk-check-wrap {
+  display: none;
+  width: 20px;
+  align-items: center;
+  justify-content: center;
+}
+
+.bulk-select-enabled .logging-bulk-check-wrap {
+  display: inline-flex;
+}
+
+.logging-bulk-check {
+  cursor: pointer;
+}
+
 .logging-channel-select {
   min-width: 200px;
   max-width: 260px;
@@ -80,6 +136,22 @@ details[open] .logging-cat-arrow {
   color: var(--text-primary, #e0e0e0);
   font-size: 0.8rem;
   cursor: pointer;
+}
+
+.logging-tests-disabled .logging-test-btn {
+  opacity: 0.55;
+}
+
+@media (max-width: 900px) {
+  .logging-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .logging-row-actions {
+    min-width: 0;
+    width: 100%;
+  }
 }
 
 .logging-save-row {
