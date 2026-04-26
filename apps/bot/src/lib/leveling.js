@@ -1,5 +1,6 @@
 const { AttachmentBuilder, EmbedBuilder } = require("discord.js");
-const { createCanvas, loadImage } = require("@napi-rs/canvas");
+const { RankCardBuilder, LeaderboardBuilder, LeaderboardVariants, Font } = require("canvacord");
+Font.loadDefault();
 const { LevelConfig } = require("../models/LevelConfig");
 const { LevelProfile } = require("../models/LevelProfile");
 
@@ -37,21 +38,6 @@ function buildLevelEmbed(title, description, fields = []) {
   if (description) embed.setDescription(description);
   if (fields.length) embed.addFields(fields);
   return embed;
-}
-
-function drawRoundRect(ctx, x, y, w, h, r) {
-  const radius = Math.max(0, Math.min(r, Math.floor(Math.min(w, h) / 2)));
-  ctx.beginPath();
-  ctx.moveTo(x + radius, y);
-  ctx.lineTo(x + w - radius, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
-  ctx.lineTo(x + w, y + h - radius);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
-  ctx.lineTo(x + radius, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
-  ctx.lineTo(x, y + radius);
-  ctx.quadraticCurveTo(x, y, x + radius, y);
-  ctx.closePath();
 }
 
 function formatInt(value) {
@@ -137,9 +123,14 @@ async function getLevelConfig(guildId, { bypassCache = false } = {}) {
 }
 
 async function updateLevelConfig(guildId, update) {
+  // Exclude keys from $setOnInsert that are already in $set to avoid MongoDB conflict
+  const setOnInsertDefaults = { ...DEFAULT_LEVEL_CONFIG };
+  for (const key of Object.keys(update)) {
+    delete setOnInsertDefaults[key];
+  }
   const doc = await LevelConfig.findOneAndUpdate(
     { guildId },
-    { $set: update, $setOnInsert: { guildId, ...DEFAULT_LEVEL_CONFIG } },
+    { $set: update, $setOnInsert: { guildId, ...setOnInsertDefaults } },
     { upsert: true, new: true, setDefaultsOnInsert: true }
   ).lean();
   configCache.delete(guildId);
@@ -247,162 +238,49 @@ async function computeRank(guildId, xp) {
 }
 
 async function buildRankCard(member, profile, config, rank) {
-  const width = 1040;
-  const height = 340;
-  const canvas = createCanvas(width, height);
-  const ctx = canvas.getContext("2d");
-
-  const gradient = ctx.createLinearGradient(0, 0, width, height);
-  gradient.addColorStop(0, "#06162f");
-  gradient.addColorStop(0.55, "#0d3a70");
-  gradient.addColorStop(1, "#0f52ba");
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, width, height);
-
-  ctx.fillStyle = "rgba(255,255,255,0.07)";
-  drawRoundRect(ctx, 20, 20, width - 40, height - 40, 20);
-  ctx.fill();
-
-  ctx.fillStyle = "rgba(255,255,255,0.08)";
-  drawRoundRect(ctx, 240, 58, 760, 246, 18);
-  ctx.fill();
-
-  const avatarUrl = member.displayAvatarURL({ extension: "png", size: 256 });
-  const avatar = await loadImage(avatarUrl);
-
-  ctx.fillStyle = "rgba(255,255,255,0.2)";
-  ctx.beginPath();
-  ctx.arc(136, 170, 95, 0, Math.PI * 2);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(136, 170, 86, 0, Math.PI * 2);
-  ctx.closePath();
-  ctx.clip();
-  ctx.drawImage(avatar, 50, 84, 172, 172);
-  ctx.restore();
-
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 40px sans-serif";
-  ctx.fillText(member.user.tag, 274, 112);
-
-  ctx.fillStyle = "#dbe7ff";
-  ctx.font = "26px sans-serif";
-  ctx.fillText(`Server Rank  #${rank}`, 274, 156);
-  ctx.fillText(`Level  ${profile.level}`, 540, 156);
-  ctx.fillText(`XP  ${formatInt(profile.xp)}`, 700, 156);
-
   const progress = progressForXp(profile.xp, profile.level, config.formula);
-  ctx.fillStyle = "rgba(255,255,255,0.18)";
-  drawRoundRect(ctx, 274, 190, 694, 34, 12);
-  ctx.fill();
+  const avatarUrl = member.displayAvatarURL({ extension: "png", size: 256 });
+  const status = member.presence?.status ?? "offline";
 
-  ctx.fillStyle = "#7ec8ff";
-  drawRoundRect(ctx, 274, 190, Math.max(14, Math.floor(694 * progress.ratio)), 34, 12);
-  ctx.fill();
+  const card = new RankCardBuilder()
+    .setAvatar(avatarUrl)
+    .setDisplayName(member.displayName)
+    .setUsername(member.user.username)
+    .setCurrentXP(progress.within)
+    .setRequiredXP(progress.span)
+    .setLevel(profile.level)
+    .setRank(rank)
+    .setStatus(status)
+    .setStyles({
+      progressbar: {
+        thumb: { style: { background: "linear-gradient(90deg, #1e6fff, #7ec8ff)" } },
+      },
+    });
 
-  ctx.fillStyle = "#f0f6ff";
-  ctx.font = "22px sans-serif";
-  ctx.fillText(
-    `${formatInt(progress.within)} / ${formatInt(progress.span)} XP this level • ${formatInt(progress.needed)} XP to next`,
-    274,
-    252
-  );
-
-  ctx.fillStyle = "rgba(255,255,255,0.8)";
-  ctx.font = "18px sans-serif";
-  ctx.fillText(`Progress ${Math.round(progress.ratio * 100)}%`, 274, 285);
-
-  const buffer = await canvas.encode("png");
+  const buffer = await card.build();
   return new AttachmentBuilder(buffer, { name: "rank-card.png" });
 }
 
 async function buildLeaderboardCard(guild, rows, { page = 1, totalPages = 1 } = {}) {
-  const width = 1100;
-  const rowHeight = 64;
-  const headerHeight = 126;
-  const footerHeight = 56;
-  const maxRows = Math.max(1, Math.min(25, rows.length));
-  const height = headerHeight + rowHeight * maxRows + footerHeight;
+  const players = rows.slice(0, 10).map((row) => ({
+    rank: row.rank,
+    username: row.username || row.displayName || `User ${row.rank}`,
+    displayName: row.displayName || row.username || `User ${row.rank}`,
+    avatar: row.avatarUrl || `https://cdn.discordapp.com/embed/avatars/${(row.rank - 1) % 6}.png`,
+    level: row.level,
+    xp: row.xp,
+  }));
 
-  const canvas = createCanvas(width, height);
-  const ctx = canvas.getContext("2d");
+  const lb = new LeaderboardBuilder()
+    .setVariant(LeaderboardVariants.Default)
+    .setHeader({
+      title: guild.name,
+      subtitle: `XP Leaderboard • Page ${page}/${Math.max(1, totalPages)}`,
+      image: guild.iconURL({ extension: "png", size: 128 }) || undefined,
+    })
+    .setPlayers(players);
 
-  const bgGradient = ctx.createLinearGradient(0, 0, width, height);
-  bgGradient.addColorStop(0, "#06162f");
-  bgGradient.addColorStop(0.6, "#0b3567");
-  bgGradient.addColorStop(1, "#0f52ba");
-  ctx.fillStyle = bgGradient;
-  ctx.fillRect(0, 0, width, height);
-
-  ctx.fillStyle = "rgba(255,255,255,0.08)";
-  drawRoundRect(ctx, 20, 20, width - 40, height - 40, 20);
-  ctx.fill();
-
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 40px sans-serif";
-  ctx.fillText(`${guild.name} XP Leaderboard`, 46, 72);
-
-  ctx.fillStyle = "rgba(255,255,255,0.9)";
-  ctx.font = "20px sans-serif";
-  ctx.fillText(`Page ${page} / ${Math.max(1, totalPages)}`, 46, 102);
-
-  for (let i = 0; i < maxRows; i++) {
-    const row = rows[i];
-    const y = headerHeight + i * rowHeight;
-    const isTopThree = row.rank <= 3;
-
-    ctx.fillStyle = isTopThree ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.1)";
-    drawRoundRect(ctx, 34, y, width - 68, rowHeight - 10, 12);
-    ctx.fill();
-
-    const avatarX = 86;
-    const avatarY = y + 8;
-    const avatarSize = 38;
-    if (row.avatarUrl) {
-      try {
-        const avatar = await loadImage(row.avatarUrl);
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(avatarX, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
-        ctx.closePath();
-        ctx.clip();
-        ctx.drawImage(avatar, avatarX - avatarSize / 2, avatarY, avatarSize, avatarSize);
-        ctx.restore();
-      } catch {}
-    }
-
-    ctx.fillStyle = "#f7fbff";
-    ctx.font = "bold 22px sans-serif";
-    ctx.fillText(`#${row.rank}`, 48, y + 40);
-
-    ctx.font = "22px sans-serif";
-    ctx.fillText(row.displayName, 118, y + 40);
-
-    ctx.fillStyle = "#d5e5ff";
-    ctx.font = "19px sans-serif";
-    ctx.fillText(`Level ${row.level}`, 640, y + 40);
-    ctx.fillText(`${formatInt(row.xp)} XP`, 760, y + 40);
-
-    const barX = 870;
-    const barY = y + 22;
-    const barW = 180;
-    const barH = 14;
-    ctx.fillStyle = "rgba(255,255,255,0.18)";
-    drawRoundRect(ctx, barX, barY, barW, barH, 7);
-    ctx.fill();
-    ctx.fillStyle = "#7ec8ff";
-    drawRoundRect(ctx, barX, barY, Math.max(8, Math.floor(barW * row.progressRatio)), barH, 7);
-    ctx.fill();
-  }
-
-  ctx.fillStyle = "rgba(255,255,255,0.85)";
-  ctx.font = "17px sans-serif";
-  ctx.fillText(`Generated by FlynnBot • ${new Date().toLocaleString("en-US")}`, 46, height - 24);
-
-  const buffer = await canvas.encode("png");
+  const buffer = await lb.build();
   return new AttachmentBuilder(buffer, { name: "leaderboard-card.png" });
 }
 

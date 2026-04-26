@@ -59,6 +59,10 @@
             <span class="sidebar-nav-icon">🎭</span>
             <span class="sidebar-nav-text">Reaction Roles</span>
           </button>
+          <button class="sidebar-nav-item" data-section="levels">
+            <span class="sidebar-nav-icon">⭐</span>
+            <span class="sidebar-nav-text">Leveling</span>
+          </button>
         </div>
       </nav>
 
@@ -117,6 +121,18 @@
               <div class="home-card-title">Prefix Settings</div>
               <div class="home-card-desc">Configure text-based prefix commands. Set custom prefixes up to 5 and control which commands respond to them.</div>
               <div class="home-card-stats" id="home-prefix-stats">Loading…</div>
+            </div>
+            <div class="home-card-arrow">→</div>
+          </div>
+
+          <div class="home-card animate-in" data-goto="levels">
+            <div class="home-card-icon-wrap" style="background:linear-gradient(135deg,rgba(15,82,186,.25),rgba(30,111,255,.15))">
+              <div class="home-card-icon">⭐</div>
+            </div>
+            <div class="home-card-body">
+              <div class="home-card-title">Leveling</div>
+              <div class="home-card-desc">Configure XP rates, level-up messages, role rewards, and manage your server leaderboard.</div>
+              <div class="home-card-stats" id="home-levels-stats">Loading…</div>
             </div>
             <div class="home-card-arrow">→</div>
           </div>
@@ -471,9 +487,152 @@
         </div>
       </section>
 
+      <!-- ── LEVELING SECTION ── -->
+      <section class="dash-section" id="section-levels" data-section="levels" style="display:none">
+
+        <div class="section-header">
+          <div>
+            <h2 class="section-page-title">Leveling</h2>
+            <p class="section-page-sub">Configure XP gain, level-up messages, role rewards, and manage your leaderboard.</p>
+          </div>
+          <div style="display:flex;align-items:center;gap:0.75rem">
+            <span style="font-size:0.9rem;color:var(--text-2)">Leveling system</span>
+            <label class="lv-toggle">
+              <input type="checkbox" id="lvEnabled">
+              <span class="lv-toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Save bar -->
+        <div class="lv-save-bar" id="lvSaveBar" style="display:none">
+          <button class="btn btn-primary" id="lvSaveBtn">💾 Save Changes</button>
+          <span class="save-status" id="lvSaveStatus"></span>
+        </div>
+
+        <div id="lvContent" style="display:none">
+
+          <!-- XP Settings -->
+          <div class="lv-card">
+            <div class="lv-card-title">⚡ XP Settings</div>
+            <div class="lv-form-grid">
+              <label class="lv-label">
+                XP per Message
+                <div style="display:flex;align-items:center;gap:0.5rem">
+                  <input type="number" id="lvXpRate" class="lv-input" min="1" max="500" placeholder="15">
+                  <span class="lv-hint-inline">1–500</span>
+                </div>
+              </label>
+              <label class="lv-label">
+                Cooldown (seconds)
+                <div style="display:flex;align-items:center;gap:0.5rem">
+                  <input type="number" id="lvXpCooldown" class="lv-input" min="0" max="3600" placeholder="60">
+                  <span class="lv-hint-inline">0 = no cooldown</span>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <!-- XP Channels -->
+          <div class="lv-card">
+            <div class="lv-card-title">📢 XP Channels</div>
+            <p class="lv-hint">Restrict XP gain to specific channels. Leave empty to allow all channels.</p>
+            <div id="lvChannelsSelect" class="lv-channel-list"></div>
+          </div>
+
+          <!-- Level Up Message -->
+          <div class="lv-card">
+            <div class="lv-card-title">🎉 Level Up Message</div>
+            <div class="lv-form-grid">
+              <label class="lv-label" style="grid-column:1/-1">
+                Message Template
+                <textarea id="lvLevelUpMessage" class="lv-textarea" rows="2" maxlength="500"
+                  placeholder="Congrats {user}! You reached level {level} in {server}."></textarea>
+                <span class="lv-hint-inline">Variables: <code>{user}</code> <code>{level}</code> <code>{server}</code></span>
+              </label>
+              <label class="lv-label">
+                Post to Channel
+                <select id="lvLevelUpChannel" class="lv-select">
+                  <option value="">Same channel as message</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <!-- Role Rewards -->
+          <div class="lv-card">
+            <div class="lv-card-title">🏆 Role Rewards</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem">
+              <p class="lv-hint" style="margin:0">Assign roles when members reach a level.</p>
+              <div style="display:flex;align-items:center;gap:0.75rem">
+                <label class="lv-label" style="flex-direction:row;align-items:center;gap:0.4rem;margin:0;font-size:0.83rem">
+                  <input type="checkbox" id="lvRoleStack"> Stack rewards
+                </label>
+                <button class="btn btn-sm" id="lvAddRewardBtn">+ Add Reward</button>
+              </div>
+            </div>
+            <div id="lvRewardsList"></div>
+            <p id="lvRewardsEmpty" class="lv-hint" style="text-align:center;margin:0">No rewards configured.</p>
+          </div>
+
+          <!-- Formula -->
+          <div class="lv-card">
+            <div class="lv-card-title">📐 XP Formula</div>
+            <p class="lv-hint">XP required for next level = <code>a × level² + b × level + c</code></p>
+            <div class="lv-form-grid">
+              <label class="lv-label">a <input type="number" id="lvFormulaA" class="lv-input" min="0" step="0.1"></label>
+              <label class="lv-label">b <input type="number" id="lvFormulaB" class="lv-input" min="0" step="0.1"></label>
+              <label class="lv-label">c <input type="number" id="lvFormulaC" class="lv-input" min="1" step="0.1"></label>
+            </div>
+          </div>
+
+          <!-- Leaderboard -->
+          <div class="lv-card">
+            <div class="lv-card-title">🏅 Leaderboard</div>
+            <div id="lvLeaderboard" class="lv-lb-table-wrap">
+              <div class="commands-loading"><div class="spinner"></div>Loading…</div>
+            </div>
+            <div style="display:flex;justify-content:center;gap:0.5rem;margin-top:0.75rem" id="lvLbPagination"></div>
+          </div>
+
+          <!-- Danger Zone -->
+          <div class="lv-card lv-card--danger">
+            <div class="lv-card-title" style="color:#f87171">⚠️ Danger Zone</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.75rem">
+              <div>
+                <div style="font-weight:600;margin-bottom:0.25rem">Reset All XP</div>
+                <div class="lv-hint" style="margin:0">Permanently deletes all XP and level data for every member in this server.</div>
+              </div>
+              <button class="btn btn-danger" id="lvResetBtn">🗑️ Reset Leaderboard</button>
+            </div>
+          </div>
+
+        </div><!-- /lvContent -->
+
+        <!-- Add Reward Modal -->
+        <div id="lvRewardBackdrop" class="modal-backdrop" aria-hidden="true">
+          <div class="modal" role="dialog" aria-modal="true" style="max-width:420px">
+            <button class="modal-close" id="lvRewardClose" aria-label="Close">✕</button>
+            <h3 style="margin-bottom:1rem">Add Role Reward</h3>
+            <label class="lv-label">Required Level <span class="required">*</span>
+              <input type="number" id="lvRewardLevel" min="1" max="9999" placeholder="e.g. 10">
+            </label>
+            <label class="lv-label" style="margin-top:0.75rem">Role <span class="required">*</span>
+              <select id="lvRewardRole">
+                <option value="">Select a role…</option>
+              </select>
+            </label>
+            <div style="display:flex;gap:0.6rem;justify-content:flex-end;margin-top:1.25rem">
+              <button class="btn btn-secondary" id="lvRewardCancel">Cancel</button>
+              <button class="btn btn-primary" id="lvRewardConfirm">Add Reward</button>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
   <!-- INFO MODAL -->
-  <div id="infoModalBackdrop" class="modal-backdrop" aria-hidden="true">
-    <div class="modal" role="dialog" aria-modal="true">
+  <div id="infoModalBackdrop" class="modal-backdrop" aria-hidden="true">    <div class="modal" role="dialog" aria-modal="true">
       <button class="modal-close" id="infoModalClose" aria-label="Close">✕</button>
       <div id="infoModalContent"></div>
     </div>
@@ -497,5 +656,6 @@
   <script src="/js/logging.js?v=20260425"></script>
   <script src="/js/builder.js?v=20260425"></script>
   <script src="/js/reactionroles.js?v=20260425"></script>
+  <script src="/js/leveling.js?v=20260426"></script>
 </body>
 </html>

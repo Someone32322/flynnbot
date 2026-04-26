@@ -7,6 +7,8 @@ const { LoggingConfig } = require('../models/LoggingConfig');
 const { EmbedTemplate } = require('../models/EmbedTemplate');
 const { ReactionRole } = require('../models/ReactionRole');
 const { ScheduledMessage } = require('../models/ScheduledMessage');
+const { LevelConfig } = require('../models/LevelConfig');
+const { LevelProfile } = require('../models/LevelProfile');
 const discordApi = require('../lib/discord');
 
 // Dashboard-local command manifest so this app can run outside the monorepo.
@@ -1149,6 +1151,144 @@ router.patch('/guild/:guildId/modconfig', requireAuth, requireGuildAdmin, async 
   } catch (err) {
     console.error('[API] PATCH modconfig', err);
     res.status(500).json({ error: 'Failed to update mod config' });
+  }
+});
+
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  LEVELING                                                   ║
+// ╚══════════════════════════════════════════════════════════════╝
+
+const DEFAULT_FORMULA = { a: 5, b: 50, c: 100 };
+const DEFAULT_LEVEL_CONFIG = {
+  enabled: true,
+  xpRate: 15,
+  xpCooldown: 60,
+  xpChannels: [],
+  rewards: [],
+  levelUpMessage: 'Congrats {user}! You reached level {level} in {server}.',
+  levelUpChannelId: null,
+  roleStack: true,
+  formula: { ...DEFAULT_FORMULA },
+};
+
+// ── GET /api/guild/:guildId/levels ────────────────────────────
+router.get('/guild/:guildId/levels', requireAuth, requireGuildAdmin, async (req, res) => {
+  try {
+    const cfg = await LevelConfig.findOneAndUpdate(
+      { guildId: req.params.guildId },
+      { $setOnInsert: { guildId: req.params.guildId, ...DEFAULT_LEVEL_CONFIG } },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    ).lean();
+    res.json(cfg);
+  } catch (err) {
+    console.error('[API] GET levels', err);
+    res.status(500).json({ error: 'Failed to fetch level config' });
+  }
+});
+
+// ── PATCH /api/guild/:guildId/levels ─────────────────────────
+router.patch('/guild/:guildId/levels', requireAuth, requireGuildAdmin, async (req, res) => {
+  try {
+    const { guildId } = req.params;
+    const body = req.body;
+    const update = {};
+
+    if (typeof body.enabled === 'boolean') update.enabled = body.enabled;
+
+    if (typeof body.xpRate === 'number' && body.xpRate >= 1 && body.xpRate <= 500)
+      update.xpRate = Math.floor(body.xpRate);
+
+    if (typeof body.xpCooldown === 'number' && body.xpCooldown >= 0 && body.xpCooldown <= 3600)
+      update.xpCooldown = Math.floor(body.xpCooldown);
+
+    if (Array.isArray(body.xpChannels))
+      update.xpChannels = body.xpChannels.filter((id) => typeof id === 'string' && /^\d+$/.test(id));
+
+    if (typeof body.levelUpMessage === 'string')
+      update.levelUpMessage = body.levelUpMessage.slice(0, 500).trim() || DEFAULT_LEVEL_CONFIG.levelUpMessage;
+
+    if (body.levelUpChannelId !== undefined)
+      update.levelUpChannelId = (typeof body.levelUpChannelId === 'string' && /^\d+$/.test(body.levelUpChannelId))
+        ? body.levelUpChannelId : null;
+
+    if (typeof body.roleStack === 'boolean') update.roleStack = body.roleStack;
+
+    if (body.formula && typeof body.formula === 'object') {
+      const a = Number(body.formula.a), b = Number(body.formula.b), c = Number(body.formula.c);
+      if (Number.isFinite(a) && Number.isFinite(b) && Number.isFinite(c)) {
+        update['formula.a'] = Math.max(0, a);
+        update['formula.b'] = Math.max(0, b);
+        update['formula.c'] = Math.max(1, c);
+      }
+    }
+
+    if (Array.isArray(body.rewards)) {
+      update.rewards = body.rewards
+        .filter((r) => typeof r.level === 'number' && r.level >= 1 && /^\d+$/.test(String(r.roleId || '')))
+        .map((r) => ({ level: Math.floor(r.level), roleId: String(r.roleId) }))
+        .sort((a, b) => a.level - b.level);
+    }
+
+    if (!Object.keys(update).length) return res.status(400).json({ error: 'Nothing to update' });
+
+    // Exclude $setOnInsert keys that overlap with $set to avoid MongoDB conflict
+    const setOnInsertDefaults = { ...DEFAULT_LEVEL_CONFIG };
+    for (const key of Object.keys(update)) {
+      const topKey = key.split('.')[0];
+      delete setOnInsertDefaults[topKey];
+    }
+
+    const doc = await LevelConfig.findOneAndUpdate(
+      { guildId },
+      { $set: update, $setOnInsert: { guildId, ...setOnInsertDefaults } },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    ).lean();
+
+    res.json({ ok: true, config: doc });
+  } catch (err) {
+    console.error('[API] PATCH levels', err);
+    res.status(500).json({ error: 'Failed to update level config' });
+  }
+});
+
+// ── GET /api/guild/:guildId/levels/leaderboard ───────────────
+router.get('/guild/:guildId/levels/leaderboard', requireAuth, requireGuildAdmin, async (req, res) => {
+  try {
+    const { guildId } = req.params;
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = 20;
+    const skip = (page - 1) * limit;
+
+    const [rows, total] = await Promise.all([
+      LevelProfile.find({ guildId }).sort({ xp: -1 }).skip(skip).limit(limit).lean(),
+      LevelProfile.countDocuments({ guildId }),
+    ]);
+
+    res.json({
+      rows: rows.map((r, i) => ({
+        userId: r.userId,
+        xp: r.xp,
+        level: r.level,
+        rank: skip + i + 1,
+      })),
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+    });
+  } catch (err) {
+    console.error('[API] GET leaderboard', err);
+    res.status(500).json({ error: 'Failed to fetch leaderboard' });
+  }
+});
+
+// ── POST /api/guild/:guildId/levels/reset ────────────────────
+router.post('/guild/:guildId/levels/reset', requireAuth, requireGuildAdmin, async (req, res) => {
+  try {
+    const result = await LevelProfile.deleteMany({ guildId: req.params.guildId });
+    res.json({ ok: true, deleted: result.deletedCount });
+  } catch (err) {
+    console.error('[API] POST levels/reset', err);
+    res.status(500).json({ error: 'Failed to reset leaderboard' });
   }
 });
 
