@@ -2,6 +2,7 @@ const { GuildConfig } = require("../models/GuildConfig");
 const { ModerationCase } = require("../models/ModerationCase");
 const { TimedAction } = require("../models/TimedAction");
 const { ScheduledMessage } = require("../models/ScheduledMessage");
+const { HealthStatus } = require("../models/HealthStatus");
 const { closeCase, logToAuditChannel } = require("./moderation");
 
 async function processTimedAction(client, actionDocument) {
@@ -110,6 +111,14 @@ function startScheduler(client) {
   msgInterval.unref();
 
   console.log("[Scheduler] Message scheduler started (60-second interval)");
+
+  // Health check scheduler — bot and website uptime monitoring
+  const healthTick = () => runHealthCheck(client).catch((err) => console.error("[HealthCheck] Error:", err));
+  setTimeout(healthTick, 10_000); // initial run after 10s on startup
+  const healthInterval = setInterval(healthTick, 5 * 60_000); // every 5 minutes
+  healthInterval.unref();
+
+  console.log("[Scheduler] Health check started (5-minute interval)");
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -416,6 +425,147 @@ async function handleCommandTrigger(client, message) {
         await message.channel.send(payload).catch(() => {});
       }
     }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  Health check scheduler — monitors bot and website uptime
+// ══════════════════════════════════════════════════════════════════
+
+/** Check if the website is online */
+async function checkWebsiteStatus() {
+  try {
+    const response = await fetch('https://flynnbot-dashboard.onrender.com', {
+      method: 'HEAD',
+      timeout: 5000,
+    });
+    return response.ok;
+  } catch (error) {
+    return false;
+  }
+}
+
+/** Build health status embed */
+function buildHealthEmbed(botOnline, websiteOnline) {
+  const SAPPHIRE = 0x0f52ba;
+  const botStatus = botOnline ? '✅ Online' : '⚠️ Offline';
+  const websiteStatus = websiteOnline ? '✅ Online' : '❌ Offline';
+  
+  return {
+    color: SAPPHIRE,
+    title: 'Flynn Bot & Website Status',
+    fields: [
+      {
+        name: 'Discord Bot',
+        value: botStatus,
+        inline: true,
+      },
+      {
+        name: 'Website',
+        value: websiteStatus,
+        inline: true,
+      },
+    ],
+    footer: {
+      text: 'Health Check Monitor',
+    },
+    timestamp: new Date(),
+  };
+}
+
+/** Run health check for Flynn support server */
+async function runHealthCheck(client) {
+  const FLYNN_SUPPORT_GUILD_ID = process.env.FLYNN_SUPPORT_GUILD_ID || '1272158852606324766';
+  const FLYNN_SUPPORT_CHANNEL_ID = '1272158892318785577';
+  
+  try {
+    // Get or create health status document
+    let healthDoc = await HealthStatus.findOne({ guildId: FLYNN_SUPPORT_GUILD_ID });
+    if (!healthDoc) {
+      healthDoc = await HealthStatus.create({
+        guildId: FLYNN_SUPPORT_GUILD_ID,
+        channelId: FLYNN_SUPPORT_CHANNEL_ID,
+        botStatus: 'online',
+        websiteStatus: 'online',
+      });
+    }
+
+    // Only check website status (bot status is managed by event handlers)
+    const websiteOnline = await checkWebsiteStatus();
+    const botOnline = healthDoc.botStatus === 'online';
+
+    // Track this check
+    healthDoc.recentChecks.push({
+      timestamp: new Date(),
+      botOnline,
+      websiteOnline,
+    });
+
+    // Detect website status change
+    const websiteStatusChanged = healthDoc.websiteStatus !== (websiteOnline ? 'online' : 'offline');
+    
+    const oldWebsiteStatus = healthDoc.websiteStatus;
+    healthDoc.websiteStatus = websiteOnline ? 'online' : 'offline';
+    healthDoc.lastChecked = new Date();
+
+    if (websiteStatusChanged) {
+      healthDoc.lastWebsiteStatusChange = new Date();
+    }
+
+    // Get target channel
+    const channel = client.channels.cache.get(FLYNN_SUPPORT_CHANNEL_ID) 
+      || await client.channels.fetch(FLYNN_SUPPORT_CHANNEL_ID).catch(() => null);
+
+    if (!channel || !channel.isTextBased()) {
+      console.warn(`[HealthCheck] Channel ${FLYNN_SUPPORT_CHANNEL_ID} not found or not text-based`);
+      await healthDoc.save();
+      return;
+    }
+
+    // If website status changed, post or edit message
+    if (websiteStatusChanged) {
+      const embed = buildHealthEmbed(botOnline, websiteOnline);
+
+      if (healthDoc.messageId) {
+        // Edit existing message
+        try {
+          const msg = await channel.messages.fetch(healthDoc.messageId).catch(() => null);
+          if (msg) {
+            await msg.edit({ embeds: [embed] }).catch((err) => {
+              console.warn(`[HealthCheck] Failed to edit message: ${err.message}`);
+            });
+          } else {
+            // Message was deleted, post a new one
+            const sent = await channel.send({ embeds: [embed] }).catch((err) => {
+              console.error(`[HealthCheck] Failed to send message: ${err.message}`);
+              return null;
+            });
+            if (sent) {
+              healthDoc.messageId = sent.id;
+            }
+          }
+        } catch (error) {
+          console.error(`[HealthCheck] Error updating message: ${error.message}`);
+        }
+      } else {
+        // Post new message
+        const sent = await channel.send({ embeds: [embed] }).catch((err) => {
+          console.error(`[HealthCheck] Failed to send message: ${err.message}`);
+          return null;
+        });
+        if (sent) {
+          healthDoc.messageId = sent.id;
+        }
+      }
+
+      console.log(
+        `[HealthCheck] Website status changed: ${oldWebsiteStatus} → ${healthDoc.websiteStatus}`
+      );
+    }
+
+    await healthDoc.save();
+  } catch (error) {
+    console.error(`[HealthCheck] Error: ${error.message}`);
   }
 }
 
