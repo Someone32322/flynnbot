@@ -57,6 +57,10 @@ function loadCommandBody(helpOnly = false) {
   const files = getJsFilesFrom("./commands");
   return files
     .filter((filePath) => {
+      const baseName = path.basename(filePath);
+      if (baseName.startsWith("_") || baseName === "meta.js") {
+        return false;
+      }
       if (!helpOnly) return true;
       // When deploying globally, only include /help
       return filePath.endsWith('help.js');
@@ -65,12 +69,13 @@ function loadCommandBody(helpOnly = false) {
       delete require.cache[require.resolve(filePath)];
       const command = require(filePath);
 
-      if (!command?.data?.toJSON) {
-        throw new Error(`Invalid command module: ${filePath}`);
+      if (!command?.data?.toJSON || typeof command.execute !== "function") {
+        return null;
       }
 
       return command.data.toJSON();
-    });
+    })
+    .filter(Boolean);
 }
 
 async function main() {

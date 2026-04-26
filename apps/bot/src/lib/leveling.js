@@ -18,6 +18,50 @@ const DEFAULT_LEVEL_CONFIG = {
   formula: { ...DEFAULT_FORMULA },
 };
 
+function svgDataUrl(svg) {
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
+const RANK_CARD_BG = svgDataUrl(`
+<svg xmlns="http://www.w3.org/2000/svg" width="934" height="282" viewBox="0 0 934 282">
+  <defs>
+    <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#071426"/>
+      <stop offset="55%" stop-color="#0b1f3b"/>
+      <stop offset="100%" stop-color="#14325c"/>
+    </linearGradient>
+    <radialGradient id="r1" cx="80%" cy="20%" r="50%">
+      <stop offset="0%" stop-color="#34d7ff" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#34d7ff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="934" height="282" fill="url(#g1)"/>
+  <rect x="0" y="0" width="934" height="282" fill="url(#r1)"/>
+  <circle cx="130" cy="68" r="70" fill="#40bfff" opacity="0.08"/>
+  <circle cx="845" cy="240" r="95" fill="#1e6fff" opacity="0.14"/>
+  <path d="M760 22l25 14v28l-25 14-25-14V36z" fill="#27c7ff" opacity="0.45"/>
+  <path d="M830 110l30 17v34l-30 17-30-17v-34z" fill="#4f6fff" opacity="0.32"/>
+</svg>
+`);
+
+const LEADERBOARD_BG = svgDataUrl(`
+<svg xmlns="http://www.w3.org/2000/svg" width="1270" height="760" viewBox="0 0 1270 760">
+  <defs>
+    <linearGradient id="g2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#061021"/>
+      <stop offset="50%" stop-color="#0a1c38"/>
+      <stop offset="100%" stop-color="#12355e"/>
+    </linearGradient>
+  </defs>
+  <rect width="1270" height="760" fill="url(#g2)"/>
+  <circle cx="170" cy="110" r="130" fill="#19c5ff" opacity="0.10"/>
+  <circle cx="1110" cy="640" r="180" fill="#1e6fff" opacity="0.12"/>
+  <path d="M920 88l34 20v39l-34 20-34-20v-39z" fill="#27d4ff" opacity="0.42"/>
+  <path d="M1060 220l26 15v30l-26 15-26-15v-30z" fill="#6d89ff" opacity="0.36"/>
+  <path d="M96 580h380" stroke="#7ec8ff" stroke-width="2" opacity="0.20"/>
+</svg>
+`);
+
 const cooldownCache = new Map();
 const configCache = new Map();
 
@@ -243,6 +287,7 @@ async function buildRankCard(member, profile, config, rank) {
   const status = member.presence?.status ?? "offline";
 
   const card = new RankCardBuilder()
+    .setBackground(RANK_CARD_BG)
     .setAvatar(avatarUrl)
     .setDisplayName(member.displayName)
     .setUsername(member.user.username)
@@ -251,9 +296,24 @@ async function buildRankCard(member, profile, config, rank) {
     .setLevel(profile.level)
     .setRank(rank)
     .setStatus(status)
+    .setOverlay(0.4)
+    .setTextStyles({ level: "LEVEL", rank: "RANK", xp: "XP" })
     .setStyles({
+      overlay: { style: { background: "linear-gradient(120deg, rgba(6,16,34,0.20), rgba(7,22,40,0.62))" } },
+      avatar: {
+        container: { style: { borderColor: "#48d3ff" } },
+      },
       progressbar: {
+        track: { style: { background: "rgba(10, 27, 52, 0.72)" } },
         thumb: { style: { background: "linear-gradient(90deg, #1e6fff, #7ec8ff)" } },
+      },
+      username: {
+        name: { style: { color: "#f3fbff" } },
+        handle: { style: { color: "#9edfff" } },
+      },
+      progress: {
+        rank: { value: { style: { color: "#7ec8ff" } } },
+        level: { value: { style: { color: "#7ec8ff" } } },
       },
     });
 
@@ -272,12 +332,15 @@ async function buildLeaderboardCard(guild, rows, { page = 1, totalPages = 1 } = 
   }));
 
   const lb = new LeaderboardBuilder()
-    .setVariant(LeaderboardVariants.Default)
+    .setVariant(LeaderboardVariants.Horizontal)
+    .setBackground(LEADERBOARD_BG)
+    .setBackgroundColor("#081327")
     .setHeader({
       title: guild.name,
-      subtitle: `XP Leaderboard • Page ${page}/${Math.max(1, totalPages)}`,
+      subtitle: `Sapphire XP Ladder • Page ${page}/${Math.max(1, totalPages)}`,
       image: guild.iconURL({ extension: "png", size: 128 }) || undefined,
     })
+    .setTextStyles({ level: "LEVEL", xp: "TOTAL XP", rank: "RANK" })
     .setPlayers(players);
 
   const buffer = await lb.build();
