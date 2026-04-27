@@ -2,6 +2,8 @@ const { MessageFlags } = require('discord.js');
 const { GuildConfig } = require('../models/GuildConfig');
 const { handleStickyForChannel, handleCommandTrigger } = require('../lib/scheduler');
 const { maybeAwardXpForMessage } = require('../lib/leveling');
+const { handleAIMessage } = require('../lib/ai');
+const { handleCustomCommands } = require('../lib/customCommands');
 
 // Maps discord.js option type numbers to their names
 const OPTION_TYPES = { 3: 'STRING', 4: 'INTEGER', 5: 'BOOLEAN', 6: 'USER', 7: 'CHANNEL', 8: 'ROLE', 10: 'NUMBER' };
@@ -149,6 +151,12 @@ module.exports = {
     // ── Message Builder: sticky + command triggers ──────────────
     handleStickyForChannel(message.client, message).catch(() => {});
     handleCommandTrigger(message.client, message).catch(() => {});
+
+    // ── AI Message Handler ─────────────────────────────────────
+    handleAIMessage(message).catch(() => {});
+
+    // ── Custom Commands ────────────────────────────────────────
+    handleCustomCommands(message).catch(() => {});
 
     // Load guild config
     const guildConfig = await GuildConfig.findOne({ guildId: message.guild.id });
