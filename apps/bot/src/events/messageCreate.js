@@ -153,7 +153,9 @@ module.exports = {
     handleCommandTrigger(message.client, message).catch(() => {});
 
     // ── AI Message Handler ─────────────────────────────────────
-    handleAIMessage(message).catch(() => {});
+    handleAIMessage(message).catch((err) => {
+      console.error(`[AI] unhandled messageCreate error guild=${message.guild?.id || 'n/a'} channel=${message.channelId || 'n/a'}`, err?.message || err);
+    });
 
     // ── Custom Commands ────────────────────────────────────────
     handleCustomCommands(message).catch(() => {});
