@@ -142,7 +142,10 @@ module.exports = {
     if (focused.name !== 'reason') return;
     const doc = await PredefinedReasons.findOne({ guildId: interaction.guildId, action: 'ban' }).lean().catch(() => null);
     const reasons = doc?.reasons ?? [];
-    const filtered = reasons.filter((r) => r.toLowerCase().includes(focused.value.toLowerCase()));
-    await interaction.respond(filtered.slice(0, 25).map((r) => ({ name: r.slice(0, 100), value: r.slice(0, 100) }))).catch(() => null);
+    const filtered = reasons.filter((r) => {
+      const search = focused.value.toLowerCase();
+      return r.name.toLowerCase().includes(search) || r.value.toLowerCase().includes(search);
+    });
+    await interaction.respond(filtered.slice(0, 25).map((r) => ({ name: r.name.slice(0, 100), value: r.value.slice(0, 100) }))).catch(() => null);
   },
 };

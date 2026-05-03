@@ -1,10 +1,21 @@
 const mongoose = require('mongoose');
 
+/**
+ * Each reason has:
+ *   name  — display label shown in autocomplete
+ *   value — actual reason text sent
+ */
 const predefinedReasonsSchema = new mongoose.Schema(
   {
     guildId: { type: String, required: true, index: true },
     action:  { type: String, required: true }, // 'warn', 'mute', 'kick', 'ban', 'softban', 'note', 'temprole'
-    reasons: { type: [String], default: [] },
+    reasons: [
+      {
+        name:  { type: String, required: true, maxlength: 100 },
+        value: { type: String, required: true, maxlength: 512 },
+        _id: false,
+      }
+    ],
   },
   { timestamps: true }
 );
