@@ -1,5 +1,5 @@
 const { MessageFlags, PermissionFlagsBits, SlashCommandBuilder } = require("discord.js");
-const { buildSapphireEmbed } = require("../../lib/moderation");
+const { buildSapphireEmbed, getModerationConfig } = require("../../lib/moderation");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -15,6 +15,8 @@ module.exports = {
     )
     .addUserOption((opt) => opt.setName("user").setDescription("Only delete messages from this user").setRequired(false)),
   async execute(interaction) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
     if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageMessages)) {
       await interaction.editReply({
         embeds: [buildSapphireEmbed({ title: "Purge", description: "You need Manage Messages permission." })],
@@ -31,7 +33,11 @@ module.exports = {
       return;
     }
 
-    let candidates = [...fetched.values()].filter((m) => !m.pinned);
+    // Respect the purgePinned dashboard setting
+    const modConfig = await getModerationConfig(interaction.guildId);
+    const allowPinned = modConfig?.purgePinned === true;
+
+    let candidates = [...fetched.values()].filter((m) => allowPinned || !m.pinned);
     if (targetUser) candidates = candidates.filter((m) => m.author?.id === targetUser.id);
     candidates = candidates.slice(0, amount);
 

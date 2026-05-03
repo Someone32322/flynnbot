@@ -1,10 +1,12 @@
 const { MessageFlags, SlashCommandBuilder } = require("discord.js");
 const {
   buildActionDm,
+  checkImmuneRoles,
   createModerationCase,
   ephemeral,
   getAuditColor,
   getGuildConfig,
+  getModerationConfig,
   hasAdminAccess,
   logCaseToAudit,
   parseDurationOption,
@@ -12,6 +14,7 @@ const {
   resolveModerationTarget,
   scheduleTimedAction,
   sendDmNotice,
+  shouldSendDm,
 } = require("../../lib/moderation");
 
 function canModerateTarget(interaction, targetMember) {
@@ -81,6 +84,12 @@ module.exports = {
       }
     }
 
+    // Check immune roles from dashboard config
+    const modConfig = await getModerationConfig(interaction.guildId);
+    if (target.targetMember && !(await checkImmuneRoles(interaction, target.targetMember, "ban", modConfig))) {
+      return;
+    }
+
     const reason = interaction.options.getString("reason") || "No reason provided.";
     const durationMs = parseDurationOption(interaction, "time");
     if (interaction.options.getString("time") && !durationMs) {
@@ -88,10 +97,9 @@ module.exports = {
       return;
     }
 
-    const dmResult = await sendDmNotice(
-      target.targetUser,
-      buildActionDm("ban", interaction.guild.name, interaction.user.tag, reason, durationMs)
-    );
+    const dmResult = shouldSendDm(modConfig, "onPunish")
+      ? await sendDmNotice(target.targetUser, buildActionDm("ban", interaction.guild.name, interaction.user.tag, reason, durationMs))
+      : { delivered: false, suffix: "DM disabled by server settings" };
 
     await interaction.guild.members.ban(target.targetUser.id, { reason });
     const caseDocument = await createModerationCase({

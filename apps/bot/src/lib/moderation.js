@@ -11,6 +11,7 @@ const { randomInt } = require("node:crypto");
 
 const { GuildConfig } = require("../models/GuildConfig");
 const { ModerationCase } = require("../models/ModerationCase");
+const { ModerationConfig } = require("../models/ModerationConfig");
 const { PersistentRole } = require("../models/PersistentRole");
 const { TimedAction } = require("../models/TimedAction");
 const { formatDate, formatDuration, parseDuration } = require("./time");
@@ -97,6 +98,79 @@ async function getGuildConfig(guildId) {
     { $setOnInsert: { guildId } },
     { new: true, upsert: true, setDefaultsOnInsert: true }
   ).lean();
+}
+
+/**
+ * Fetch the ModerationConfig for a guild (dashboard settings).
+ * Returns null if no config exists yet.
+ */
+async function getModerationConfig(guildId) {
+  return ModerationConfig.findOne({ guildId }).lean().catch(() => null);
+}
+
+/**
+ * Check if a target member is immune to a given moderation action.
+ * Returns true if the action can proceed, false if the target is immune.
+ * When false, an ephemeral reply is already sent to the interaction.
+ */
+async function checkImmuneRoles(interaction, targetMember, actionType, modConfig) {
+  if (!targetMember || !modConfig?.immuneRoles) return true;
+
+  const ir = modConfig.immuneRoles;
+
+  // Role-hierarchy check
+  if (ir.useHierarchy && targetMember && interaction.member) {
+    const botMember = interaction.guild.members.me;
+    const targetHighest = targetMember.roles.highest.position;
+    const modHighest    = interaction.member.roles.highest.position;
+    const botHighest    = botMember?.roles.highest.position ?? 0;
+    // If target's highest role is >= moderator's highest, block it
+    if (interaction.guild.ownerId !== interaction.user.id && targetHighest >= modHighest) {
+      await interaction.editReply(
+        ephemeral("You cannot moderate that user — they have an equal or higher role than you (hierarchy protection is on).")
+      );
+      return false;
+    }
+    if (targetHighest >= botHighest) {
+      await interaction.editReply(
+        ephemeral("The bot cannot moderate that user — they have an equal or higher role than the bot.")
+      );
+      return false;
+    }
+  }
+
+  // Explicit immune role check
+  const immuneRoleIds = [
+    ...(ir.global   || []),
+    ...(ir[actionType] || []),
+  ];
+
+  if (immuneRoleIds.length === 0) return true;
+
+  const memberRoleIds = [...targetMember.roles.cache.keys()];
+  const isImmune      = immuneRoleIds.some((id) => memberRoleIds.includes(id));
+
+  if (isImmune) {
+    await interaction.editReply(
+      ephemeral("That user has a role that is immune to this moderation action.")
+    );
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Return whether a DM notification should be sent to a punished user.
+ * @param {object|null} modConfig  - ModerationConfig lean document
+ * @param {'onPunish'|'onUnpunish'} eventType
+ */
+function shouldSendDm(modConfig, eventType = "onPunish") {
+  if (!modConfig) return true;
+  const un = modConfig.userNotifications;
+  if (!un) return true;
+  if (un.enabled === false) return false;
+  return un[eventType] !== false;
 }
 
 function hasAdminAccess(interaction) {
@@ -633,6 +707,7 @@ module.exports = {
   buildSapphireEmbed,
   buildStaffReply,
   cancelTimedActions,
+  checkImmuneRoles,
   closeCase,
   ensureTargetModeratable,
   ensureTimeoutWithinLimits,
@@ -641,6 +716,7 @@ module.exports = {
   formatDuration,
   getAuditColor,
   getGuildConfig,
+  getModerationConfig,
   getTargetMember,
   getLockableChannels,
   getPersistentRoles,
@@ -659,6 +735,7 @@ module.exports = {
   resolveUserFromInput,
   scheduleTimedAction,
   sendDmNotice,
+  shouldSendDm,
   togglePersistentRole,
   updateCaseDuration,
   updateCaseReason,

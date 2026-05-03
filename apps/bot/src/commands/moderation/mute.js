@@ -3,17 +3,20 @@ const {
   MAX_TIMEOUT_MS,
   buildActionDm,
   buildStaffReply,
+  checkImmuneRoles,
   createModerationCase,
   ensureTargetModeratable,
   ensureTimeoutWithinLimits,
   ephemeral,
   getAuditColor,
+  getModerationConfig,
   logCaseToAudit,
   parseDurationOption,
   requireModeratorAccess,
   resolveModerationTarget,
   scheduleTimedAction,
   sendDmNotice,
+  shouldSendDm,
 } = require("../../lib/moderation");
 
 module.exports = {
@@ -34,6 +37,12 @@ module.exports = {
       return;
     }
 
+    // Check immune roles from dashboard config
+    const modConfig = await getModerationConfig(interaction.guildId);
+    if (!(await checkImmuneRoles(interaction, target.targetMember, "mute", modConfig))) {
+      return;
+    }
+
     const reason = interaction.options.getString("reason") || "No reason provided.";
     const parsedDuration = parseDurationOption(interaction, "time");
     if (interaction.options.getString("time") && !parsedDuration) {
@@ -46,10 +55,9 @@ module.exports = {
       return;
     }
 
-    const dmResult = await sendDmNotice(
-      target.targetUser,
-      buildActionDm("mute", interaction.guild.name, interaction.user.tag, reason, durationMs)
-    );
+    const dmResult = shouldSendDm(modConfig, "onPunish")
+      ? await sendDmNotice(target.targetUser, buildActionDm("mute", interaction.guild.name, interaction.user.tag, reason, durationMs))
+      : { delivered: false, suffix: "DM disabled by server settings" };
 
     await target.targetMember.timeout(durationMs, reason);
     const caseDocument = await createModerationCase({

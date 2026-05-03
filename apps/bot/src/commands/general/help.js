@@ -6,12 +6,7 @@ const DASHBOARD_URL = process.env.DASHBOARD_URL || 'https://flynnbot-dashboard.o
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('help')
-    .setDescription('Learn about FlynnBot and how to enable commands for your server.')
-    .addBooleanOption((option) =>
-      option
-        .setName('public')
-        .setDescription('Send this help message publicly in this channel (this run only).')
-    ),
+    .setDescription('Learn about FlynnBot and how to enable commands for your server.'),
 
   async execute(interaction) {
     const embed = new EmbedBuilder()

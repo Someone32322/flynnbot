@@ -2,14 +2,17 @@ const { SlashCommandBuilder } = require("discord.js");
 const {
   buildActionDm,
   buildStaffReply,
+  checkImmuneRoles,
   createModerationCase,
   ensureTargetModeratable,
   ephemeral,
   getAuditColor,
+  getModerationConfig,
   logCaseToAudit,
   requireModeratorAccess,
   resolveModerationTarget,
   sendDmNotice,
+  shouldSendDm,
 } = require("../../lib/moderation");
 
 module.exports = {
@@ -29,11 +32,16 @@ module.exports = {
       return;
     }
 
+    // Check immune roles from dashboard config
+    const modConfig = await getModerationConfig(interaction.guildId);
+    if (target.targetMember && !(await checkImmuneRoles(interaction, target.targetMember, "warn", modConfig))) {
+      return;
+    }
+
     const reason = interaction.options.getString("reason") || "No reason provided.";
-    const dmResult = await sendDmNotice(
-      target.targetUser,
-      buildActionDm("warn", interaction.guild.name, interaction.user.tag, reason)
-    );
+    const dmResult = shouldSendDm(modConfig, "onPunish")
+      ? await sendDmNotice(target.targetUser, buildActionDm("warn", interaction.guild.name, interaction.user.tag, reason))
+      : { delivered: false, suffix: "DM disabled by server settings" };
 
     const caseDocument = await createModerationCase({
       guild: interaction.guild,
