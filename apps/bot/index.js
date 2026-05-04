@@ -118,28 +118,39 @@ try {
   process.exit(1);
 }
 
-const axios = require("axios");
-
-const DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1500783548670414919/AShRDmY5wG7K7gQFjnaLsoN6N9dXjDqZAmeirGTbDFEz6WrfMkyI8R0WWF0OBVmL3UJ-";
-
-async function sendAlert(message) {
-  try {
-    await axios.post(DISCORD_WEBHOOK, {
-      content: message
-    });
-  } catch (err) {
-    console.log("Failed to send webhook:", err.message);
-  }
-}
+const { sendStatusWebhook } = require("./src/lib/statusWebhook");
+const { stopHealthReporter, reportOffline } = require("./src/lib/health");
 
 process.on("uncaughtException", async (err) => {
-  await sendAlert(`💥 BOT CRASHED (uncaughtException)\n\n${err.stack || err}`);
+  console.error("[Bot] uncaughtException:", err);
+  await reportOffline(`FlynnBot encountered a critical error and has gone offline.`).catch(() => {});
+  await sendStatusWebhook({
+    type: 'offline',
+    title: '💥 FlynnBot — Critical Error',
+    description: `FlynnBot encountered an unexpected error. It will attempt to restart automatically.`,
+  }).catch(() => {});
   process.exit(1);
 });
 
 process.on("unhandledRejection", async (err) => {
-  await sendAlert(`⚠️ UNHANDLED PROMISE REJECTION\n\n${err}`);
+  console.error("[Bot] unhandledRejection:", err);
+  await sendStatusWebhook({
+    type: 'degraded',
+    title: '⚠️ FlynnBot — Unhandled Error',
+    description: `FlynnBot encountered an unhandled error and may be experiencing degraded service.`,
+  }).catch(() => {});
 });
+
+async function gracefulShutdown(signal) {
+  console.log(`[Bot] Received ${signal}, shutting down gracefully...`);
+  stopHealthReporter();
+  await reportOffline('FlynnBot has been shut down for maintenance.').catch(() => {});
+  process.exit(0);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
 
 async function bootstrap() {
   try {
