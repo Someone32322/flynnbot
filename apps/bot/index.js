@@ -116,6 +116,28 @@ try {
   process.exit(1);
 }
 
+const axios = require("axios");
+
+const DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1500783548670414919/AShRDmY5wG7K7gQFjnaLsoN6N9dXjDqZAmeirGTbDFEz6WrfMkyI8R0WWF0OBVmL3UJ-";
+
+async function sendAlert(message) {
+  try {
+    await axios.post(DISCORD_WEBHOOK, {
+      content: message
+    });
+  } catch (err) {
+    console.log("Failed to send webhook:", err.message);
+  }
+}
+
+process.on("uncaughtException", async (err) => {
+  await sendAlert(`💥 BOT CRASHED (uncaughtException)\n\n${err.stack || err}`);
+  process.exit(1);
+});
+
+process.on("unhandledRejection", async (err) => {
+  await sendAlert(`⚠️ UNHANDLED PROMISE REJECTION\n\n${err}`);
+});
 async function bootstrap() {
   try {
     await mongoose.connect(process.env.MONGO_URI);
