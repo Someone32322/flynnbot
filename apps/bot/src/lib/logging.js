@@ -610,163 +610,122 @@ function setupLogging(client) {
     }, { thumbnailUrl: av, footerText: ban.user.tag }));
   });
 
+  // ── Single consolidated guildUpdate handler (replaces 22 separate ones) ──
   client.on("guildUpdate", async (oldG, newG) => {
-    const changes = {};
-    if (oldG.name !== newG.name) changes["Name"] = oldG.name + " → " + newG.name;
-    if (oldG.icon !== newG.icon) changes["Icon"] = "Changed";
-    if (oldG.banner !== newG.banner) changes["Banner"] = "Changed";
-    if (oldG.description !== newG.description) changes["Description"] = (oldG.description ?? "none") + " → " + (newG.description ?? "none");
-    if (oldG.verificationLevel !== newG.verificationLevel) changes["Verification Level"] = oldG.verificationLevel + " → " + newG.verificationLevel;
-    if (!Object.keys(changes).length) return;
-    await sendLog(newG, "guild_update", sapphireEmbed("Server Updated", { Server: newG.name, ...changes }, { footerText: newG.name }));
-  });
+    // General summary (name, icon, banner, description, verification)
+    const summary = {};
+    if (oldG.name !== newG.name) summary["Name"] = oldG.name + " → " + newG.name;
+    if (oldG.icon !== newG.icon) summary["Icon"] = "Changed";
+    if (oldG.banner !== newG.banner) summary["Banner"] = "Changed";
+    if (oldG.description !== newG.description) summary["Description"] = (oldG.description ?? "none") + " → " + (newG.description ?? "none");
+    if (oldG.verificationLevel !== newG.verificationLevel) summary["Verification Level"] = oldG.verificationLevel + " → " + newG.verificationLevel;
+    if (Object.keys(summary).length)
+      await sendLog(newG, "guild_update", sapphireEmbed("Server Updated", { Server: newG.name, ...summary }, { footerText: newG.name }));
 
-  client.on("guildUpdate", async (oldG, newG) => {
+    if (oldG.name !== newG.name)
+      await sendLog(newG, "server_name_update", sapphireEmbed("Server Name Updated", {
+        "Old Name": oldG.name, "New Name": newG.name,
+      }, { footerText: newG.name }));
+
+    if (oldG.icon !== newG.icon)
+      await sendLog(newG, "server_icon_update", sapphireEmbed("Server Icon Updated", {
+        Server: newG.name, ID: "`" + newG.id + "`",
+      }, { footerText: newG.name }));
+
+    if (oldG.banner !== newG.banner)
+      await sendLog(newG, "server_banner_level_update", sapphireEmbed("Server Banner Updated", {
+        Server: newG.name,
+      }, { footerText: newG.name }));
+
+    if (oldG.description !== newG.description)
+      await sendLog(newG, "server_description_update", sapphireEmbed("Server Description Updated", {
+        Server: newG.name,
+      }, { footerText: newG.name }));
+
     if (oldG.afkChannelId !== newG.afkChannelId)
       await sendLog(newG, "afk_channel_update", sapphireEmbed("AFK Channel Updated", {
         "Old Channel": oldG.afkChannelId ? "<#" + oldG.afkChannelId + ">" : "None",
         "New Channel": newG.afkChannelId ? "<#" + newG.afkChannelId + ">" : "None",
       }, { footerText: newG.name }));
-  });
 
-  client.on("guildUpdate", async (oldG, newG) => {
     if (oldG.afkTimeout !== newG.afkTimeout)
       await sendLog(newG, "afk_timeout_update", sapphireEmbed("AFK Timeout Updated", {
         "Old Timeout": String(oldG.afkTimeout) + "s", "New Timeout": String(newG.afkTimeout) + "s",
       }, { footerText: newG.name }));
-  });
 
-  client.on("guildUpdate", async (oldG, newG) => {
-    if (oldG.icon !== newG.icon)
-      await sendLog(newG, "server_icon_update", sapphireEmbed("Server Icon Updated", {
-        Server: newG.name, ID: "`" + newG.id + "`",
-      }, { footerText: newG.name }));
-  });
-
-  client.on("guildUpdate", async (oldG, newG) => {
     if (oldG.defaultMessageNotifications !== newG.defaultMessageNotifications)
       await sendLog(newG, "message_notification_update", sapphireEmbed("Message Notification Settings Updated", {
         Server: newG.name,
       }, { footerText: newG.name }));
-  });
 
-  client.on("guildUpdate", async (oldG, newG) => {
     if (oldG.discoverySplash !== newG.discoverySplash)
       await sendLog(newG, "server_discovery_splash_update", sapphireEmbed("Discovery Splash Updated", {
         Server: newG.name,
       }, { footerText: newG.name }));
-  });
 
-  client.on("guildUpdate", async (oldG, newG) => {
     if (oldG.features !== newG.features)
       await sendLog(newG, "server_features_update", sapphireEmbed("Server Features Updated", {
         Server: newG.name,
       }, { footerText: newG.name }));
-  });
 
-  client.on("guildUpdate", async (oldG, newG) => {
     if (oldG.vanityURLCode !== newG.vanityURLCode)
       await sendLog(newG, "server_vanity_url_update", sapphireEmbed("Vanity URL Updated", {
         "Old URL": oldG.vanityURLCode ?? "None",
         "New URL": newG.vanityURLCode ?? "None",
       }, { footerText: newG.name }));
-  });
 
-  client.on("guildUpdate", async (oldG, newG) => {
     if (oldG.mfaLevel !== newG.mfaLevel)
       await sendLog(newG, "mfa_level_update", sapphireEmbed("MFA Level Updated", {
         "Old Level": String(oldG.mfaLevel), "New Level": String(newG.mfaLevel),
       }, { footerText: newG.name }));
-  });
 
-  client.on("guildUpdate", async (oldG, newG) => {
-    if (oldG.name !== newG.name)
-      await sendLog(newG, "server_name_update", sapphireEmbed("Server Name Updated", {
-        "Old Name": oldG.name, "New Name": newG.name,
-      }, { footerText: newG.name }));
-  });
-
-  client.on("guildUpdate", async (oldG, newG) => {
-    if (oldG.description !== newG.description)
-      await sendLog(newG, "server_description_update", sapphireEmbed("Server Description Updated", {
-        Server: newG.name,
-      }, { footerText: newG.name }));
-  });
-
-  client.on("guildUpdate", async (oldG, newG) => {
     if (oldG.ownerId !== newG.ownerId)
       await sendLog(newG, "server_owner_update", sapphireEmbed("Server Owner Updated", {
         "Old Owner": "<@" + oldG.ownerId + ">",
         "New Owner": "<@" + newG.ownerId + ">",
       }, { footerText: newG.name }));
-  });
 
-  client.on("guildUpdate", async (oldG, newG) => {
     if (oldG.partnered !== newG.partnered)
       await sendLog(newG, "partnered_update", sapphireEmbed("Partnered Status Updated", {
         "Partnered": String(newG.partnered),
       }, { footerText: newG.name }));
-  });
 
-  client.on("guildUpdate", async (oldG, newG) => {
-    if (oldG.banner !== newG.banner)
-      await sendLog(newG, "server_banner_level_update", sapphireEmbed("Server Banner Updated", {
-        Server: newG.name,
-      }, { footerText: newG.name }));
-  });
-
-  client.on("guildUpdate", async (oldG, newG) => {
     if (oldG.premiumProgressBarEnabled !== newG.premiumProgressBarEnabled)
       await sendLog(newG, "boost_progress_bar_toggle", sapphireEmbed("Boost Progress Bar Toggled", {
         "Enabled": String(newG.premiumProgressBarEnabled),
       }, { footerText: newG.name }));
-  });
 
-  client.on("guildUpdate", async (oldG, newG) => {
-    if (oldG.systemChannelId !== newG.systemChannelId)
+    if (oldG.systemChannelId !== newG.systemChannelId) {
       await sendLog(newG, "public_updates_channel_update", sapphireEmbed("Public Updates Channel Updated", {
         Server: newG.name,
       }, { footerText: newG.name }));
-  });
+      await sendLog(newG, "system_channel_update", sapphireEmbed("System Channel Updated", {
+        Server: newG.name,
+      }, { footerText: newG.name }));
+    }
 
-  client.on("guildUpdate", async (oldG, newG) => {
     if (oldG.rulesChannelId !== newG.rulesChannelId)
       await sendLog(newG, "server_rules_channel_update", sapphireEmbed("Rules Channel Updated", {
         Server: newG.name,
       }, { footerText: newG.name }));
-  });
 
-  client.on("guildUpdate", async (oldG, newG) => {
     if (oldG.widgetEnabled !== newG.widgetEnabled)
       await sendLog(newG, "server_widget_update", sapphireEmbed("Server Widget Updated", {
         "Widget Enabled": String(newG.widgetEnabled),
       }, { footerText: newG.name }));
-  });
 
-  client.on("guildUpdate", async (oldG, newG) => {
-    if (oldG.systemChannelId !== newG.systemChannelId)
-      await sendLog(newG, "system_channel_update", sapphireEmbed("System Channel Updated", {
-        Server: newG.name,
-      }, { footerText: newG.name }));
-  });
-
-  client.on("guildUpdate", async (oldG, newG) => {
     if (oldG.preferredLocale !== newG.preferredLocale)
       await sendLog(newG, "server_preferred_locale_update", sapphireEmbed("Preferred Locale Updated", {
         "Old Locale": String(oldG.preferredLocale),
         "New Locale": String(newG.preferredLocale),
       }, { footerText: newG.name }));
-  });
 
-  client.on("guildUpdate", async (oldG, newG) => {
     if (oldG.verificationLevel !== newG.verificationLevel)
       await sendLog(newG, "verification_level_update", sapphireEmbed("Verification Level Updated", {
         "Old Level": String(oldG.verificationLevel),
         "New Level": String(newG.verificationLevel),
       }, { footerText: newG.name }));
-  });
 
-  client.on("guildUpdate", async (oldG, newG) => {
     if (oldG.verified !== newG.verified)
       await sendLog(newG, "verified_update", sapphireEmbed("Verified Status Updated", {
         "Verified": String(newG.verified),
