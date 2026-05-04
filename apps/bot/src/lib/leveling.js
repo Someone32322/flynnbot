@@ -1,6 +1,4 @@
 const { AttachmentBuilder, EmbedBuilder } = require("discord.js");
-const { RankCardBuilder, LeaderboardBuilder, LeaderboardVariants, Font } = require("canvacord");
-Font.loadDefault();
 const { LevelConfig } = require("../models/LevelConfig");
 const { LevelProfile } = require("../models/LevelProfile");
 
@@ -64,6 +62,27 @@ const LEADERBOARD_BG = svgDataUrl(`
 
 const cooldownCache = new Map();
 const configCache = new Map();
+let canvacordModule;
+
+function getCanvacord() {
+  if (canvacordModule !== undefined) return canvacordModule;
+
+  try {
+    const loaded = require("canvacord");
+    loaded.Font?.loadDefault?.();
+
+    if (!loaded.RankCardBuilder || !loaded.LeaderboardBuilder || !loaded.LeaderboardVariants) {
+      throw new Error("Installed canvacord version does not expose the v6 builder API.");
+    }
+
+    canvacordModule = loaded;
+  } catch (error) {
+    canvacordModule = null;
+    console.warn("[Levels] canvacord unavailable; falling back to embed responses for rank cards.", error.message);
+  }
+
+  return canvacordModule;
+}
 
 function cacheKey(guildId, userId) {
   return `${guildId}:${userId}`;
@@ -282,11 +301,14 @@ async function computeRank(guildId, xp) {
 }
 
 async function buildRankCard(member, profile, config, rank) {
+  const canvacord = getCanvacord();
+  if (!canvacord) throw new Error("canvacord unavailable");
+
   const progress = progressForXp(profile.xp, profile.level, config.formula);
   const avatarUrl = member.displayAvatarURL({ extension: "png", size: 256 });
   const status = member.presence?.status ?? "offline";
 
-  const card = new RankCardBuilder()
+  const card = new canvacord.RankCardBuilder()
     .setBackground(RANK_CARD_BG)
     .setAvatar(avatarUrl)
     .setDisplayName(member.displayName)
@@ -322,6 +344,9 @@ async function buildRankCard(member, profile, config, rank) {
 }
 
 async function buildLeaderboardCard(guild, rows, { page = 1, totalPages = 1 } = {}) {
+  const canvacord = getCanvacord();
+  if (!canvacord) throw new Error("canvacord unavailable");
+
   const players = rows.slice(0, 10).map((row) => ({
     rank: row.rank,
     username: row.username || row.displayName || `User ${row.rank}`,
@@ -331,8 +356,8 @@ async function buildLeaderboardCard(guild, rows, { page = 1, totalPages = 1 } = 
     xp: row.xp,
   }));
 
-  const lb = new LeaderboardBuilder()
-    .setVariant(LeaderboardVariants.Horizontal)
+  const lb = new canvacord.LeaderboardBuilder()
+    .setVariant(canvacord.LeaderboardVariants.Horizontal)
     .setBackground(LEADERBOARD_BG)
     .setBackgroundColor("#081327")
     .setHeader({
