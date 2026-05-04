@@ -48,6 +48,8 @@ const client = new Client({
     Partials.GuildMember,
   ],
 });
+client.setMaxListeners(25);
+client.on('error', (err) => console.error('[Discord Error]', err));
 client.commands = new Collection();
 client.paginationSessions = new Map();
 
@@ -145,9 +147,7 @@ async function bootstrap() {
     console.log("Connected to MongoDB.");
 
     await client.login(process.env.DISCORD_BOT_TOKEN);
-
-    // Start scheduler once client is ready (moderation timers + message builder)
-    client.once('clientReady', () => startScheduler(client));
+    // Scheduler and logging are started by the clientReady event in src/events/ready.js
   } catch (error) {
     console.error("Bot startup failed:", error);
     process.exit(1);

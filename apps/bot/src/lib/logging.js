@@ -214,6 +214,18 @@ function setupLogging(client) {
       ID: "`" + newRule.id + "`",
       Enabled: oldRule.enabled + " → " + newRule.enabled,
     }, { footerText: newRule.guild.name }));
+
+    if (oldRule.enabled !== newRule.enabled)
+      await sendLog(newRule.guild, "automod_rule_enable_update", sapphireEmbed("AutoMod Rule Enable Updated", {
+        Name: newRule.name,
+        ID: "`" + newRule.id + "`",
+        Enabled: String(oldRule.enabled) + " → " + String(newRule.enabled),
+      }, { footerText: newRule.guild.name }));
+
+    if (oldRule.triggerType !== newRule.triggerType)
+      await sendLog(newRule.guild, "automod_rule_trigger_update", sapphireEmbed("AutoMod Trigger Updated", {
+        Rule: newRule.name, "Old Type": String(oldRule.triggerType), "New Type": String(newRule.triggerType),
+      }, { footerText: newRule.guild.name }));
   });
 
   client.on("autoModerationActionExecution", async (exec) => {
@@ -225,27 +237,15 @@ function setupLogging(client) {
     }, { footerText: exec.guild.name }));
   });
 
-  client.on("autoModerationRuleUpdate", async (oldRule, newRule) => {
-    if (oldRule.enabled === newRule.enabled) return;
-    await sendLog(newRule.guild, "automod_rule_enable_update", sapphireEmbed("AutoMod Rule Enable Updated", {
-      Name: newRule.name,
-      ID: "`" + newRule.id + "`",
-      Enabled: String(oldRule.enabled) + " → " + String(newRule.enabled),
-    }, { footerText: newRule.guild.name }));
-  });
-
-  client.on("autoModerationRuleUpdate", async (oldRule, newRule) => {
-    if (oldRule.triggerType !== newRule.triggerType)
-      await sendLog(newRule.guild, "automod_rule_trigger_update", sapphireEmbed("AutoMod Trigger Updated", {
-        Rule: newRule.name, "Old Type": String(oldRule.triggerType), "New Type": String(newRule.triggerType),
-      }, { footerText: newRule.guild.name }));
-  });
-
   // ─────────────────────── EMOJIS (4) ──────────────────────────
   client.on("guildEmojisUpdate", async (oldEmojis, newEmojis, guild) => {
     const added = newEmojis.filter((e) => !oldEmojis.has(e.id));
     const deleted = oldEmojis.filter((e) => !newEmojis.has(e.id));
     const updated = newEmojis.filter((e) => { const o = oldEmojis.get(e.id); return o && o.name !== e.name; });
+    const rolesChanged = newEmojis.filter((e) => {
+      const o = oldEmojis.get(e.id);
+      return o && JSON.stringify(o.roles) !== JSON.stringify(e.roles);
+    });
     for (const e of added.values())
       await sendLog(guild, "emoji_create", sapphireEmbed("Emoji Created", {
         Name: ":" + e.name + ":", ID: "`" + e.id + "`", Animated: e.animated ? "Yes" : "No",
@@ -260,13 +260,6 @@ function setupLogging(client) {
         "Old Name": ":" + o.name + ":", "New Name": ":" + e.name + ":", ID: "`" + e.id + "`",
       }, { footerText: guild.name }));
     }
-  });
-
-  client.on("guildEmojisUpdate", async (oldEmojis, newEmojis, guild) => {
-    const rolesChanged = newEmojis.filter((e) => {
-      const o = oldEmojis.get(e.id);
-      return o && JSON.stringify(o.roles) !== JSON.stringify(e.roles);
-    });
     for (const e of rolesChanged.values())
       await sendLog(guild, "emoji_role_update", sapphireEmbed("Emoji Roles Updated", {
         Name: ":" + e.name + ":", ID: "`" + e.id + "`",
@@ -278,6 +271,8 @@ function setupLogging(client) {
     const added = newS.filter((s) => !oldS.has(s.id));
     const deleted = oldS.filter((s) => !newS.has(s.id));
     const updated = newS.filter((s) => { const o = oldS.get(s.id); return o && o.name !== s.name; });
+    const nameChanges = updated;
+    const descChanges = newS.filter((s) => { const o = oldS.get(s.id); return o && o.description !== s.description; });
     for (const s of added.values())
       await sendLog(guild, "sticker_create", sapphireEmbed("Sticker Created", {
         Name: s.name, ID: "`" + s.id + "`",
@@ -292,18 +287,10 @@ function setupLogging(client) {
         "Old Name": o.name, "New Name": s.name, ID: "`" + s.id + "`",
       }, { footerText: guild.name }));
     }
-  });
-
-  client.on("guildStickersUpdate", async (oldS, newS, guild) => {
-    const nameChanges = newS.filter((s) => { const o = oldS.get(s.id); return o && o.name !== s.name; });
     for (const s of nameChanges)
       await sendLog(guild, "sticker_name_update", sapphireEmbed("Sticker Name Updated", {
         "Old Name": oldS.get(s.id).name, "New Name": s.name, ID: "`" + s.id + "`",
       }, { footerText: guild.name }));
-  });
-
-  client.on("guildStickersUpdate", async (oldS, newS, guild) => {
-    const descChanges = newS.filter((s) => { const o = oldS.get(s.id); return o && o.description !== s.description; });
     for (const s of descChanges)
       await sendLog(guild, "sticker_description_update", sapphireEmbed("Sticker Description Updated", {
         Name: s.name, ID: "`" + s.id + "`",
@@ -325,63 +312,47 @@ function setupLogging(client) {
     }, { footerText: ev.guild.name }));
   });
 
-  client.on("guildScheduledEventUpdate", async (_, newEv) => {
+  client.on("guildScheduledEventUpdate", async (oldEv, newEv) => {
     if (!newEv) return;
     await sendLog(newEv.guild, "event_update", sapphireEmbed("Scheduled Event Updated", {
       Name: newEv.name, ID: "`" + newEv.id + "`", Status: String(newEv.status),
     }, { footerText: newEv.guild.name }));
-  });
 
-  client.on("guildScheduledEventUpdate", async (oldEv, newEv) => {
     if (oldEv.name !== newEv.name)
       await sendLog(newEv.guild, "event_name_update", sapphireEmbed("Event Name Updated", {
         "Old Name": oldEv.name, "New Name": newEv.name, ID: "`" + newEv.id + "`",
       }, { footerText: newEv.guild.name }));
-  });
 
-  client.on("guildScheduledEventUpdate", async (oldEv, newEv) => {
     if (oldEv.description !== newEv.description)
       await sendLog(newEv.guild, "event_description_update", sapphireEmbed("Event Description Updated", {
         Name: newEv.name, ID: "`" + newEv.id + "`",
       }, { footerText: newEv.guild.name }));
-  });
 
-  client.on("guildScheduledEventUpdate", async (oldEv, newEv) => {
     if (oldEv.channelId !== newEv.channelId)
       await sendLog(newEv.guild, "event_channel_update", sapphireEmbed("Event Channel Updated", {
         Name: newEv.name, "New Channel": newEv.channelId ? "<#" + newEv.channelId + ">" : "None",
       }, { footerText: newEv.guild.name }));
-  });
 
-  client.on("guildScheduledEventUpdate", async (oldEv, newEv) => {
     if (oldEv.privacyLevel !== newEv.privacyLevel)
       await sendLog(newEv.guild, "event_privacy_level_update", sapphireEmbed("Event Privacy Updated", {
         Name: newEv.name, "New Level": String(newEv.privacyLevel),
       }, { footerText: newEv.guild.name }));
-  });
 
-  client.on("guildScheduledEventUpdate", async (oldEv, newEv) => {
     if (oldEv.status !== newEv.status)
       await sendLog(newEv.guild, "event_status_update", sapphireEmbed("Event Status Updated", {
         Name: newEv.name, "Old Status": String(oldEv.status), "New Status": String(newEv.status),
       }, { footerText: newEv.guild.name }));
-  });
 
-  client.on("guildScheduledEventUpdate", async (oldEv, newEv) => {
     if (oldEv.scheduledStartAt !== newEv.scheduledStartAt)
       await sendLog(newEv.guild, "event_start_time_update", sapphireEmbed("Event Start Time Updated", {
         Name: newEv.name, "New Start": newEv.scheduledStartAt ? ts(newEv.scheduledStartAt) : "N/A",
       }, { footerText: newEv.guild.name }));
-  });
 
-  client.on("guildScheduledEventUpdate", async (oldEv, newEv) => {
     if (oldEv.scheduledEndAt !== newEv.scheduledEndAt)
       await sendLog(newEv.guild, "event_end_time_update", sapphireEmbed("Event End Time Updated", {
         Name: newEv.name, "New End": newEv.scheduledEndAt ? ts(newEv.scheduledEndAt) : "N/A",
       }, { footerText: newEv.guild.name }));
-  });
 
-  client.on("guildScheduledEventUpdate", async (oldEv, newEv) => {
     if (oldEv.image !== newEv.image)
       await sendLog(newEv.guild, "event_image_update", sapphireEmbed("Event Image Updated", {
         Name: newEv.name, ID: "`" + newEv.id + "`",
@@ -425,17 +396,26 @@ function setupLogging(client) {
   });
 
   client.on("guildMemberAdd", async (member) => {
+    // Invite tracking
     const previous = inviteUsesByGuild.get(member.guild.id) ?? new Map();
     const invites = await refreshInviteCache(member.guild);
-    if (!invites) return;
-    const used = invites.find((inv) => (inv.uses ?? 0) > (previous.get(inv.code) ?? 0));
-    if (!used) return;
-    await sendLog(member.guild, "invite_uses", sapphireEmbed("Invite Used", {
+    if (invites) {
+      const used = invites.find((inv) => (inv.uses ?? 0) > (previous.get(inv.code) ?? 0));
+      if (used)
+        await sendLog(member.guild, "invite_uses", sapphireEmbed("Invite Used", {
+          User: member.user.tag + " `(" + member.id + ")`",
+          Code: "`" + used.code + "`",
+          Uses: String(used.uses ?? 0),
+          Inviter: used.inviter ? "<@" + used.inviter.id + ">" : "Unknown",
+        }, { footerText: member.guild.name }));
+    }
+    // Join log
+    const av = member.user.displayAvatarURL({ extension: "png", size: 256 });
+    await sendLog(member.guild, "user_join", sapphireEmbed("Member Joined", {
       User: member.user.tag + " `(" + member.id + ")`",
-      Code: "`" + used.code + "`",
-      Uses: String(used.uses ?? 0),
-      Inviter: used.inviter ? "<@" + used.inviter.id + ">" : "Unknown",
-    }, { footerText: member.guild.name }));
+      "Account Created": ts(member.user.createdAt),
+      "Member #": String(member.guild.memberCount),
+    }, { thumbnailUrl: av, footerText: member.user.tag }));
   });
 
   // ─────────────────────── MESSAGES (6) ────────────────────────
@@ -510,34 +490,26 @@ function setupLogging(client) {
     if (oldR.color !== newR.color) changes["Color"] = oldR.hexColor + " → " + newR.hexColor;
     if (oldR.hoist !== newR.hoist) changes["Hoisted"] = oldR.hoist + " → " + newR.hoist;
     if (oldR.mentionable !== newR.mentionable) changes["Mentionable"] = oldR.mentionable + " → " + newR.mentionable;
-    if (!Object.keys(changes).length) return;
-    await sendLog(newR.guild, "role_update", sapphireEmbed("Role Updated", {
-      Role: String(newR), ID: "`" + newR.id + "`", ...changes,
-    }, { footerText: newR.guild.name }));
-  });
+    if (Object.keys(changes).length)
+      await sendLog(newR.guild, "role_update", sapphireEmbed("Role Updated", {
+        Role: String(newR), ID: "`" + newR.id + "`", ...changes,
+      }, { footerText: newR.guild.name }));
 
-  client.on("roleUpdate", async (oldR, newR) => {
     if (oldR.color !== newR.color)
       await sendLog(newR.guild, "role_color_update", sapphireEmbed("Role Color Updated", {
         Role: String(newR), "Old Color": oldR.hexColor, "New Color": newR.hexColor,
       }, { footerText: newR.guild.name }));
-  });
 
-  client.on("roleUpdate", async (oldR, newR) => {
     if (JSON.stringify(oldR.permissions) !== JSON.stringify(newR.permissions))
       await sendLog(newR.guild, "role_permission_update", sapphireEmbed("Role Permissions Updated", {
         Role: String(newR), ID: "`" + newR.id + "`",
       }, { footerText: newR.guild.name }));
-  });
 
-  client.on("roleUpdate", async (oldR, newR) => {
     if (oldR.name !== newR.name)
       await sendLog(newR.guild, "role_name_update", sapphireEmbed("Role Name Updated", {
         "Old Name": oldR.name, "New Name": newR.name, ID: "`" + newR.id + "`",
       }, { footerText: newR.guild.name }));
-  });
 
-  client.on("roleUpdate", async (oldR, newR) => {
     if (oldR.mentionable !== newR.mentionable)
       await sendLog(newR.guild, "role_mentionable_update", sapphireEmbed("Role Mentionable Updated", {
         Role: String(newR), "Old Value": String(oldR.mentionable), "New Value": String(newR.mentionable),
@@ -545,15 +517,6 @@ function setupLogging(client) {
   });
 
   // ─────────────────────── SERVER (34) ─────────────────────────
-  client.on("guildMemberAdd", async (member) => {
-    const av = member.user.displayAvatarURL({ extension: "png", size: 256 });
-    await sendLog(member.guild, "user_join", sapphireEmbed("Member Joined", {
-      User: member.user.tag + " `(" + member.id + ")`",
-      "Account Created": ts(member.user.createdAt),
-      "Member #": String(member.guild.memberCount),
-    }, { thumbnailUrl: av, footerText: member.user.tag }));
-  });
-
   client.on("guildMemberRemove", async (member) => {
     const roles = [...member.roles.cache.values()].filter((r) => r.id !== member.guild.id).map((r) => r.name).join(", ") || "None";
     const av = member.user.displayAvatarURL({ extension: "png", size: 256 });
@@ -571,14 +534,13 @@ function setupLogging(client) {
     const removedR = oldM.roles.cache.filter((r) => !newM.roles.cache.has(r.id) && r.id !== newM.guild.id);
     if (addedR.size) changes["Roles Added"] = addedR.map((r) => r.toString()).join(", ");
     if (removedR.size) changes["Roles Removed"] = removedR.map((r) => r.toString()).join(", ");
-    if (!Object.keys(changes).length) return;
-    const av = newM.user.displayAvatarURL({ extension: "png", size: 256 });
-    await sendLog(newM.guild, "member_update", sapphireEmbed("Member Updated", {
-      User: newM.user.tag + " `(" + newM.id + ")`", ...changes,
-    }, { thumbnailUrl: av, footerText: newM.user.tag }));
-  });
+    if (Object.keys(changes).length) {
+      const av = newM.user.displayAvatarURL({ extension: "png", size: 256 });
+      await sendLog(newM.guild, "member_update", sapphireEmbed("Member Updated", {
+        User: newM.user.tag + " `(" + newM.id + ")`", ...changes,
+      }, { thumbnailUrl: av, footerText: newM.user.tag }));
+    }
 
-  client.on("guildMemberUpdate", async (oldM, newM) => {
     const rolesChanged = oldM.roles.cache.size !== newM.roles.cache.size ||
       oldM.roles.cache.some((r) => !newM.roles.cache.has(r.id)) ||
       newM.roles.cache.some((r) => !oldM.roles.cache.has(r.id));
@@ -586,9 +548,7 @@ function setupLogging(client) {
       await sendLog(newM.guild, "user_role_update", sapphireEmbed("User Role Updated", {
         User: newM.user.tag, ID: "`" + newM.id + "`",
       }, { footerText: newM.user.tag }));
-  });
 
-  client.on("guildMemberUpdate", async (oldM, newM) => {
     if (oldM.communicationDisabledUntil !== newM.communicationDisabledUntil)
       await sendLog(newM.guild, "user_mute", sapphireEmbed("User Muted", {
         User: newM.user.tag, "Until": newM.communicationDisabledUntil ? ts(newM.communicationDisabledUntil) : "N/A",
@@ -754,28 +714,22 @@ function setupLogging(client) {
     if (oldT.name !== newT.name) changes["Name"] = oldT.name + " → " + newT.name;
     if (oldT.archived !== newT.archived) changes["Archived"] = oldT.archived + " → " + newT.archived;
     if (oldT.locked !== newT.locked) changes["Locked"] = oldT.locked + " → " + newT.locked;
-    if (!Object.keys(changes).length) return;
-    await sendLog(newT.guild, "thread_update", sapphireEmbed("Thread Updated", {
-      Thread: String(newT), ID: "`" + newT.id + "`", ...changes,
-    }, { footerText: newT.guild.name }));
-  });
+    if (Object.keys(changes).length)
+      await sendLog(newT.guild, "thread_update", sapphireEmbed("Thread Updated", {
+        Thread: String(newT), ID: "`" + newT.id + "`", ...changes,
+      }, { footerText: newT.guild.name }));
 
-  client.on("threadUpdate", async (oldT, newT) => {
     if (oldT.name !== newT.name)
       await sendLog(newT.guild, "thread_name_update", sapphireEmbed("Thread Name Updated", {
         "Old Name": oldT.name, "New Name": newT.name,
       }, { footerText: newT.guild.name }));
-  });
 
-  client.on("threadUpdate", async (oldT, newT) => {
     if (oldT.rateLimitPerUser !== newT.rateLimitPerUser)
       await sendLog(newT.guild, "thread_slow_mode_update", sapphireEmbed("Thread Slow Mode Updated", {
         "Old Limit": String(oldT.rateLimitPerUser) + "s",
         "New Limit": String(newT.rateLimitPerUser) + "s",
       }, { footerText: newT.guild.name }));
-  });
 
-  client.on("threadUpdate", async (oldT, newT) => {
     if (oldT.autoArchiveDuration !== newT.autoArchiveDuration)
       await sendLog(newT.guild, "thread_archive_duration_update", sapphireEmbed("Thread Archive Duration Updated", {
         "Old Duration": String(oldT.autoArchiveDuration) + "m",
