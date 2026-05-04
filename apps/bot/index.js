@@ -138,6 +138,10 @@ process.on("uncaughtException", async (err) => {
 process.on("unhandledRejection", async (err) => {
   await sendAlert(`⚠️ UNHANDLED PROMISE REJECTION\n\n${err}`);
 });
+
+setTimeout(() => {
+  throw new Error("TEST CRASH - ignore this");
+}, 5000);
 async function bootstrap() {
   try {
     await mongoose.connect(process.env.MONGO_URI);
