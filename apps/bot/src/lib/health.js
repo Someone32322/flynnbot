@@ -79,7 +79,7 @@ async function report(client) {
       await sendStatusWebhook({
         type: 'degraded',
         title: '⚠️ FlynnBot — Elevated Latency',
-        description: `FlynnBot is currently experiencing higher than normal latency (${latencyMs} ms). The team is looking into it.`,
+        description: `FlynnBot is currently experiencing higher than normal latency (${latencyMs} ms). Some commands may be slower to respond. We will respond if the issues persist.`,
       });
     }
 

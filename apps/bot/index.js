@@ -144,7 +144,7 @@ process.on("unhandledRejection", async (err) => {
 async function gracefulShutdown(signal) {
   console.log(`[Bot] Received ${signal}, shutting down gracefully...`);
   stopHealthReporter();
-  await reportOffline('FlynnBot has been shut down for maintenance.').catch(() => {});
+  await reportOffline('This is an automated message stating that FlynnBot has been shut down manually - however this may be an error, our team will follw up.').catch(() => {});
   process.exit(0);
 }
 
