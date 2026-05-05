@@ -144,7 +144,7 @@ process.on("unhandledRejection", async (err) => {
 async function gracefulShutdown(signal) {
   console.log(`[Bot] Received ${signal}, shutting down gracefully...`);
   stopHealthReporter();
-  await reportOffline('Flynnbot has been restarted for an update. Reconnected in 120ms.').catch(() => {});
+  await reportOffline('Flynnbot has been restarted for an update.').catch(() => {});
   process.exit(0);
 }
 
