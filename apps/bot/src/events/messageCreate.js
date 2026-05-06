@@ -4,9 +4,27 @@ const { handleStickyForChannel, handleCommandTrigger } = require('../lib/schedul
 const { maybeAwardXpForMessage } = require('../lib/leveling');
 const { handleAIMessage } = require('../lib/ai');
 const { handleCustomCommands } = require('../lib/customCommands');
+const COMMAND_META = require('../commands/meta');
 
 // Maps discord.js option type numbers to their names
 const OPTION_TYPES = { 3: 'STRING', 4: 'INTEGER', 5: 'BOOLEAN', 6: 'USER', 7: 'CHANNEL', 8: 'ROLE', 10: 'NUMBER' };
+const COMMAND_ALIAS_MAP = buildCommandAliasMap(COMMAND_META);
+
+function buildCommandAliasMap(meta) {
+  const aliasMap = new Map();
+  for (const [name, cfg] of Object.entries(meta || {})) {
+    aliasMap.set(name.toLowerCase(), name.toLowerCase());
+    for (const alias of cfg?.aliases || []) {
+      aliasMap.set(String(alias).toLowerCase(), name.toLowerCase());
+    }
+  }
+  return aliasMap;
+}
+
+function resolveCommandName(input) {
+  if (!input) return null;
+  return COMMAND_ALIAS_MAP.get(String(input).toLowerCase()) || null;
+}
 
 /**
  * Parse positional text args into a named options map based on the command's
@@ -170,7 +188,8 @@ module.exports = {
     if (!usedPrefix) return;
 
     const args = content.slice(usedPrefix.length).trim().split(/\s+/);
-    const commandName = args.shift()?.toLowerCase();
+    const requestedName = args.shift()?.toLowerCase();
+    const commandName = resolveCommandName(requestedName);
     if (!commandName) return;
 
     const command = message.client.commands.get(commandName);

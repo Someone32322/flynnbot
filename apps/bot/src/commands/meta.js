@@ -22,7 +22,7 @@ module.exports = {
   ban: {
     category: 'Moderation',
     description: 'Permanently ban a member from the server.',
-    usage: '/ban <user> [reason] [delete-days]',
+    usage: '/ban <user|user_id> [time] [reason]',
     aliases: ['b'],
   },
   kick: {
@@ -40,7 +40,7 @@ module.exports = {
   mute: {
     category: 'Moderation',
     description: 'Timeout (mute) a member for a specified duration.',
-    usage: '/mute <user> <duration> [reason]',
+    usage: '/mute <user> [time] [reason]',
     aliases: ['m', 'timeout'],
   },
   unmute: {
@@ -52,7 +52,7 @@ module.exports = {
   softban: {
     category: 'Moderation',
     description: 'Ban then immediately unban a user to purge their recent messages.',
-    usage: '/softban <user> [reason] [delete-days]',
+    usage: '/softban <user> [reason]',
     aliases: ['sb'],
   },
   deafen: {
@@ -397,134 +397,6 @@ module.exports = {
     category: 'Levels',
     description: 'Show the XP leaderboard for this server.',
     usage: '/leaderboard [limit] [page]',
-    aliases: [],
-  },
-
-  // ── Economy ───────────────────────────────────────────────────
-  balance: {
-    category: 'Economy',
-    description: 'Check your wallet and bank balance.',
-    usage: '/balance [user]',
-    aliases: ['bal'],
-  },
-  daily: {
-    category: 'Economy',
-    description: 'Collect your daily coins reward.',
-    usage: '/daily',
-    aliases: [],
-  },
-  weekly: {
-    category: 'Economy',
-    description: 'Collect your weekly coins reward.',
-    usage: '/weekly',
-    aliases: [],
-  },
-  work: {
-    category: 'Economy',
-    description: 'Work a job to earn coins.',
-    usage: '/work',
-    aliases: [],
-  },
-  crime: {
-    category: 'Economy',
-    description: 'Attempt a crime for a risky payout.',
-    usage: '/crime',
-    aliases: [],
-  },
-  beg: {
-    category: 'Economy',
-    description: 'Beg for a small amount of coins.',
-    usage: '/beg',
-    aliases: [],
-  },
-  rob: {
-    category: 'Economy',
-    description: 'Attempt to rob another user\'s wallet.',
-    usage: '/rob <user>',
-    aliases: [],
-  },
-  deposit: {
-    category: 'Economy',
-    description: 'Deposit coins from your wallet to your bank.',
-    usage: '/deposit <amount|all>',
-    aliases: ['dep'],
-  },
-  withdraw: {
-    category: 'Economy',
-    description: 'Withdraw coins from your bank to your wallet.',
-    usage: '/withdraw <amount|all>',
-    aliases: ['with'],
-  },
-  give: {
-    category: 'Economy',
-    description: 'Give coins to another user.',
-    usage: '/give <user> <amount>',
-    aliases: [],
-  },
-  shop: {
-    category: 'Economy',
-    description: 'View the server shop.',
-    usage: '/shop',
-    aliases: [],
-  },
-  buy: {
-    category: 'Economy',
-    description: 'Buy an item from the server shop.',
-    usage: '/buy <item> [quantity]',
-    aliases: [],
-  },
-  sell: {
-    category: 'Economy',
-    description: 'Sell an item from your inventory.',
-    usage: '/sell <item> [quantity]',
-    aliases: [],
-  },
-  inventory: {
-    category: 'Economy',
-    description: 'View your inventory.',
-    usage: '/inventory [user]',
-    aliases: ['inv'],
-  },
-  use: {
-    category: 'Economy',
-    description: 'Use an item from your inventory.',
-    usage: '/use <item>',
-    aliases: [],
-  },
-  slots: {
-    category: 'Economy',
-    description: 'Spin the slot machine.',
-    usage: '/slots <bet>',
-    aliases: [],
-  },
-  coinflip: {
-    category: 'Economy',
-    description: 'Flip a coin and bet on the outcome.',
-    usage: '/coinflip <bet> [side]',
-    aliases: ['cf'],
-  },
-  blackjack: {
-    category: 'Economy',
-    description: 'Play a round of blackjack.',
-    usage: '/blackjack <bet>',
-    aliases: ['bj'],
-  },
-  fish: {
-    category: 'Economy',
-    description: 'Go fishing for collectibles.',
-    usage: '/fish',
-    aliases: [],
-  },
-  hunt: {
-    category: 'Economy',
-    description: 'Go hunting for wild animals.',
-    usage: '/hunt',
-    aliases: [],
-  },
-  economy: {
-    category: 'Economy',
-    description: 'Economy leaderboard and personal stats.',
-    usage: '/economy leaderboard [page] | /economy stats [user]',
     aliases: [],
   },
 };

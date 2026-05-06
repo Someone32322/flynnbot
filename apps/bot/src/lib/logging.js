@@ -7,19 +7,176 @@
 
 const { EmbedBuilder, ChannelType, Events } = require("discord.js");
 const { LoggingConfig } = require("../models/LoggingConfig");
+const { ScheduledMessage } = require("../models/ScheduledMessage");
 
 const SAPPHIRE = 0x0f52ba;
+const LOG_CONFIG_TTL_MS = 3_000;
+const WEBHOOK_CACHE_TTL_MS = 10 * 60_000;
+const HAS_SNAPSHOT_FLAG = 16_384;
 
-async function getLogChannel(guild, eventKey) {
-  const cfg = await LoggingConfig.findOne({ guildId: guild.id }).lean().catch(() => null);
-  if (!cfg?.channels?.[eventKey]) return null;
-  try { return await guild.channels.fetch(cfg.channels[eventKey]); }
+const loggingConfigCache = new Map();
+const loggingWebhookCache = new Map();
+
+async function getLoggingConfig(guildId) {
+  const now = Date.now();
+  const cached = loggingConfigCache.get(guildId);
+  if (cached && cached.expiresAt > now) return cached.config;
+
+  const config = await LoggingConfig.findOne({ guildId }).lean().catch(() => null);
+  const safeConfig = config || { channels: {} };
+  loggingConfigCache.set(guildId, { config: safeConfig, expiresAt: now + LOG_CONFIG_TTL_MS });
+  return safeConfig;
+}
+
+async function getLogChannel(guild, config, eventKey) {
+  const channelId = config?.channels?.[eventKey];
+  if (!channelId) return null;
+  try { return await guild.channels.fetch(channelId); }
   catch { return null; }
 }
 
-async function sendLog(guild, eventKey, embed) {
-  const channel = await getLogChannel(guild, eventKey);
+function isEmbedOnlyMessage(message) {
+  if (!message) return false;
+  const hasText = Boolean(String(message.content || "").trim());
+  const embedCount = Array.isArray(message.embeds)
+    ? message.embeds.length
+    : (typeof message.embeds?.size === "number" ? message.embeds.size : 0);
+  const attachmentCount = typeof message.attachments?.size === "number" ? message.attachments.size : 0;
+  return !hasText && embedCount > 0 && attachmentCount === 0;
+}
+
+function isForwardedMessage(message) {
+  if (!message) return false;
+  if (message.messageSnapshots?.size > 0) return true;
+
+  const flags = message.flags;
+  if (!flags) return false;
+
+  try {
+    if (typeof flags.has === "function" && flags.has("HasSnapshot")) return true;
+  } catch {}
+
+  try {
+    if (typeof flags.has === "function" && flags.has(HAS_SNAPSHOT_FLAG)) return true;
+  } catch {}
+
+  const raw = Number(flags.bitfield ?? flags);
+  if (Number.isFinite(raw) && (raw & HAS_SNAPSHOT_FLAG) === HAS_SNAPSHOT_FLAG) return true;
+  return false;
+}
+
+function isMessageUnrecognized(message, context) {
+  if (typeof context?.isUnrecognized === "boolean") return context.isUnrecognized;
+  if (!message) return true;
+  return Boolean(message.partial || !message.author);
+}
+
+function isMessageAuthorInVoice(message) {
+  if (!message?.guild || !message?.author?.id) return false;
+  const member = message.member || message.guild.members?.cache?.get(message.author.id);
+  return Boolean(member?.voice?.channelId);
+}
+
+async function isStickyScheduledMessage(guildId, messageId) {
+  if (!guildId || !messageId) return false;
+  const exists = await ScheduledMessage.exists({
+    guildId,
+    postedMessageId: messageId,
+    "delivery.type": "sticky",
+  }).catch(() => null);
+  return Boolean(exists);
+}
+
+async function shouldSkipBySettings(guild, eventKey, config, context = {}) {
+  const message = context.message;
+  const messageEvent = eventKey === "message_delete" || eventKey === "message_edit" || eventKey === "message_pin" || eventKey === "message_publish";
+
+  if (messageEvent && config?.ignoreEmbeds && isEmbedOnlyMessage(message)) {
+    return true;
+  }
+
+  if (messageEvent && config?.ignoreVoice && isMessageAuthorInVoice(message)) {
+    return true;
+  }
+
+  if (eventKey !== "message_delete") {
+    return false;
+  }
+
+  if (config?.logUnrecognized === false && isMessageUnrecognized(message, context)) {
+    return true;
+  }
+
+  if (config?.logDeletedPolls === false && Boolean(message?.poll)) {
+    return true;
+  }
+
+  if (config?.logDeletedForwarded === false && isForwardedMessage(message)) {
+    return true;
+  }
+
+  if (config?.logDeletedSticky === false && await isStickyScheduledMessage(guild?.id, message?.id)) {
+    return true;
+  }
+
+  return false;
+}
+
+async function getLoggingWebhook(channel) {
+  if (!channel || typeof channel.fetchWebhooks !== "function" || typeof channel.createWebhook !== "function") {
+    return null;
+  }
+
+  const now = Date.now();
+  const cached = loggingWebhookCache.get(channel.id);
+  if (cached && cached.expiresAt > now) {
+    return cached.webhook;
+  }
+
+  try {
+    const hooks = await channel.fetchWebhooks();
+    const existing = hooks.find((hook) => hook.owner?.id === channel.client.user?.id && hook.name === "FlynnBot Logs");
+    const webhook = existing || await channel.createWebhook({ name: "FlynnBot Logs", reason: "FlynnBot logging output" });
+    loggingWebhookCache.set(channel.id, { webhook, expiresAt: now + WEBHOOK_CACHE_TTL_MS });
+    return webhook;
+  } catch {
+    return null;
+  }
+}
+
+async function sendViaWebhook(channel, guild, embed) {
+  const webhook = await getLoggingWebhook(channel);
+  if (!webhook) return false;
+
+  try {
+    await webhook.send({
+      embeds: [embed],
+      username: "FlynnBot Logs",
+      avatarURL: guild?.iconURL?.({ extension: "png", size: 256 }) || undefined,
+      allowedMentions: { parse: [] },
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function sendLog(guild, eventKey, embed, context = {}) {
+  const config = await getLoggingConfig(guild.id);
+  if (!config?.channels?.[eventKey]) return;
+
+  if (await shouldSkipBySettings(guild, eventKey, config, context)) {
+    return;
+  }
+
+  const channel = await getLogChannel(guild, config, eventKey);
   if (!channel?.isTextBased()) return;
+
+  if (config.useWebhooks) {
+    const sent = await sendViaWebhook(channel, guild, embed);
+    if (sent) return;
+  }
+
   await channel.send({ embeds: [embed] }).catch(() => null);
 }
 
@@ -441,7 +598,10 @@ function setupLogging(client) {
       Author: authorTag,
       Channel: "<#" + message.channelId + ">",
       Content: message.content ? message.content.slice(0, 512) : "*No text content*",
-    }, { thumbnailUrl: av, footerText: message.author ? message.author.tag : "Unknown User" }));
+    }, { thumbnailUrl: av, footerText: message.author ? message.author.tag : "Unknown User" }), {
+      message,
+      isUnrecognized: Boolean(message.partial || !message.author),
+    });
   });
 
   client.on("messageUpdate", async (oldMsg, newMsg) => {
@@ -455,7 +615,9 @@ function setupLogging(client) {
         Author: (newMsg.author?.tag ?? "Unknown") + " `(" + (newMsg.author?.id ?? "?") + ")`",
         Channel: "<#" + newMsg.channelId + ">",
         "Jump to Message": "[Click here](" + newMsg.url + ")",
-      }, { thumbnailUrl: av, footerText: newMsg.author?.tag ?? "Unknown" }));
+      }, { thumbnailUrl: av, footerText: newMsg.author?.tag ?? "Unknown" }), {
+        message: newMsg,
+      });
     }
     const oldContent = oldMsg.partial ? null : oldMsg.content;
     const newContent = newMsg.content ?? "";
@@ -467,7 +629,9 @@ function setupLogging(client) {
       "Jump to Message": "[Click here](" + newMsg.url + ")",
       Before: oldContent !== null ? (oldContent.slice(0, 400) || "*empty*") : "*not cached*",
       After: newContent.slice(0, 400) || "*empty*",
-    }, { thumbnailUrl: av, footerText: newMsg.author ? newMsg.author.tag : "Unknown User" }));
+    }, { thumbnailUrl: av, footerText: newMsg.author ? newMsg.author.tag : "Unknown User" }), {
+      message: newMsg,
+    });
   });
 
   // ─────────────────────── ROLES (9) ───────────────────────────

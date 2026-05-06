@@ -28,6 +28,11 @@ module.exports = {
     }
 
     const target = await resolveModerationTarget(interaction, "user", "unused_user_id");
+    if (!target) {
+      await interaction.reply(ephemeral("Usage: /kick <user> [reason]"));
+      return;
+    }
+
     if (!target?.targetMember || !(await ensureTargetModeratable(interaction, target.targetMember))) {
       return;
     }

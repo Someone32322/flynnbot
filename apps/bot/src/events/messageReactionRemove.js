@@ -21,7 +21,10 @@ module.exports = {
     const rr = await ReactionRole.findOne({
       guildId,
       type: "emoji",
-      externalMessageId: reaction.message.id,
+      $or: [
+        { externalMessageId: reaction.message.id },
+        { messageId: reaction.message.id },
+      ],
     }).catch(() => null);
 
     if (rr) {

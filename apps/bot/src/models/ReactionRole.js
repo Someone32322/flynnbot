@@ -32,6 +32,7 @@ const reactionRoleSchema = new mongoose.Schema(
     externalChannelId: { type: String, default: null },
     externalMessageId: { type: String, default: null },
     messageUrl:        { type: String, default: null },
+    content:           { type: String, default: null },
     embedTitle:        { type: String, default: 'Reaction Roles' },
     embedDescription:  { type: String, default: 'Click a button or select an option below.' },
     embedColor:        { type: Number, default: 0x0f52ba },

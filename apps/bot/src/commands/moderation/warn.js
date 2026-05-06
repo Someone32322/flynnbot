@@ -28,7 +28,12 @@ module.exports = {
     }
 
     const target = await resolveModerationTarget(interaction, "user", "unused_user_id");
-    if (!target || !(await ensureTargetModeratable(interaction, target.targetMember))) {
+    if (!target) {
+      await interaction.reply(ephemeral("Usage: /warn <user> [reason]"));
+      return;
+    }
+
+    if (!(await ensureTargetModeratable(interaction, target.targetMember))) {
       return;
     }
 

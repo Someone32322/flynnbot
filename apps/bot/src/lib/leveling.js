@@ -63,19 +63,45 @@ const LEADERBOARD_BG = svgDataUrl(`
 const cooldownCache = new Map();
 const configCache = new Map();
 let canvacordModule;
+let canvacordFontsLoaded = false;
+
+const AVATAR_FALLBACK = "https://cdn.discordapp.com/embed/avatars/0.png";
+
+function ensureCanvacordFonts(moduleRef) {
+  if (!moduleRef || canvacordFontsLoaded) return;
+  try {
+    moduleRef.Font?.loadDefault?.();
+    canvacordFontsLoaded = true;
+  } catch (error) {
+    // Keep running with default canvas fallback behavior even if explicit font load fails.
+    console.warn("[Levels] Failed to pre-load canvacord fonts; using runtime fallback.", error.message);
+  }
+}
+
+function safeAvatarUrl(url) {
+  if (!url || typeof url !== "string") return AVATAR_FALLBACK;
+  if (url.startsWith("data:image/")) return url;
+  if (/^https?:\/\//i.test(url)) return url;
+  return AVATAR_FALLBACK;
+}
+
+function isAssetLoadError(error) {
+  const msg = String(error?.message || error || "").toLowerCase();
+  return msg.includes("image") || msg.includes("font") || msg.includes("canvas") || msg.includes("fetch") || msg.includes("load");
+}
 
 function getCanvacord() {
   if (canvacordModule !== undefined) return canvacordModule;
 
   try {
     const loaded = require("canvacord");
-    loaded.Font?.loadDefault?.();
 
     if (!loaded.RankCardBuilder || !loaded.LeaderboardBuilder || !loaded.LeaderboardVariants) {
       throw new Error("Installed canvacord version does not expose the v6 builder API.");
     }
 
     canvacordModule = loaded;
+    ensureCanvacordFonts(loaded);
   } catch (error) {
     canvacordModule = null;
     console.warn("[Levels] canvacord unavailable; falling back to embed responses for rank cards.", error.message);
@@ -303,72 +329,102 @@ async function computeRank(guildId, xp) {
 async function buildRankCard(member, profile, config, rank) {
   const canvacord = getCanvacord();
   if (!canvacord) throw new Error("canvacord unavailable");
+  ensureCanvacordFonts(canvacord);
 
   const progress = progressForXp(profile.xp, profile.level, config.formula);
-  const avatarUrl = member.displayAvatarURL({ extension: "png", size: 256 });
+  const avatarUrl = safeAvatarUrl(member.displayAvatarURL({ extension: "png", size: 256 }));
   const status = member.presence?.status ?? "offline";
 
-  const card = new canvacord.RankCardBuilder()
-    .setBackground(RANK_CARD_BG)
-    .setAvatar(avatarUrl)
-    .setDisplayName(member.displayName)
-    .setUsername(member.user.username)
-    .setCurrentXP(progress.within)
-    .setRequiredXP(progress.span)
-    .setLevel(profile.level)
-    .setRank(rank)
-    .setStatus(status)
-    .setOverlay(0.4)
-    .setTextStyles({ level: "LEVEL", rank: "RANK", xp: "XP" })
-    .setStyles({
-      overlay: { style: { background: "linear-gradient(120deg, rgba(6,16,34,0.20), rgba(7,22,40,0.62))" } },
-      avatar: {
-        container: { style: { borderColor: "#48d3ff" } },
-      },
-      progressbar: {
-        track: { style: { background: "rgba(10, 27, 52, 0.72)" } },
-        thumb: { style: { background: "linear-gradient(90deg, #1e6fff, #7ec8ff)" } },
-      },
-      username: {
-        name: { style: { color: "#f3fbff" } },
-        handle: { style: { color: "#9edfff" } },
-      },
-      progress: {
-        rank: { value: { style: { color: "#7ec8ff" } } },
-        level: { value: { style: { color: "#7ec8ff" } } },
-      },
-    });
+  const buildBuffer = async (avatar, { fallbackBackground = false } = {}) => {
+    const card = new canvacord.RankCardBuilder()
+      .setBackground(fallbackBackground ? AVATAR_FALLBACK : RANK_CARD_BG)
+      .setAvatar(avatar)
+      .setDisplayName(member.displayName)
+      .setUsername(member.user.username)
+      .setCurrentXP(progress.within)
+      .setRequiredXP(progress.span)
+      .setLevel(profile.level)
+      .setRank(rank)
+      .setStatus(status)
+      .setOverlay(0.4)
+      .setTextStyles({ level: "LEVEL", rank: "RANK", xp: "XP" })
+      .setStyles({
+        overlay: { style: { background: "linear-gradient(120deg, rgba(6,16,34,0.20), rgba(7,22,40,0.62))" } },
+        avatar: {
+          container: { style: { borderColor: "#48d3ff" } },
+        },
+        progressbar: {
+          track: { style: { background: "rgba(10, 27, 52, 0.72)" } },
+          thumb: { style: { background: "linear-gradient(90deg, #1e6fff, #7ec8ff)" } },
+        },
+        username: {
+          name: { style: { color: "#f3fbff" } },
+          handle: { style: { color: "#9edfff" } },
+        },
+        progress: {
+          rank: { value: { style: { color: "#7ec8ff" } } },
+          level: { value: { style: { color: "#7ec8ff" } } },
+        },
+      });
+    return card.build();
+  };
 
-  const buffer = await card.build();
+  let buffer;
+  try {
+    buffer = await buildBuffer(avatarUrl);
+  } catch (error) {
+    if (!isAssetLoadError(error)) throw error;
+    console.warn("[Levels] Rank card asset load failed; retrying with fallback assets.", error.message);
+    buffer = await buildBuffer(AVATAR_FALLBACK, { fallbackBackground: true });
+  }
+
   return new AttachmentBuilder(buffer, { name: "rank-card.png" });
 }
 
 async function buildLeaderboardCard(guild, rows, { page = 1, totalPages = 1 } = {}) {
   const canvacord = getCanvacord();
   if (!canvacord) throw new Error("canvacord unavailable");
+  ensureCanvacordFonts(canvacord);
 
   const players = rows.slice(0, 10).map((row) => ({
     rank: row.rank,
     username: row.username || row.displayName || `User ${row.rank}`,
     displayName: row.displayName || row.username || `User ${row.rank}`,
-    avatar: row.avatarUrl || `https://cdn.discordapp.com/embed/avatars/${(row.rank - 1) % 6}.png`,
+    avatar: safeAvatarUrl(row.avatarUrl),
     level: row.level,
     xp: row.xp,
   }));
 
-  const lb = new canvacord.LeaderboardBuilder()
-    .setVariant(canvacord.LeaderboardVariants.Horizontal)
-    .setBackground(LEADERBOARD_BG)
-    .setBackgroundColor("#081327")
-    .setHeader({
+  const guildIcon = safeAvatarUrl(guild.iconURL({ extension: "png", size: 128 }));
+
+  const buildBuffer = async (inputPlayers, { includeIcon = true, includeBackground = true } = {}) => {
+    const header = {
       title: guild.name,
       subtitle: `Sapphire XP Ladder • Page ${page}/${Math.max(1, totalPages)}`,
-      image: guild.iconURL({ extension: "png", size: 128 }) || undefined,
-    })
-    .setTextStyles({ level: "LEVEL", xp: "TOTAL XP", rank: "RANK" })
-    .setPlayers(players);
+      image: includeIcon ? guildIcon : AVATAR_FALLBACK,
+    };
 
-  const buffer = await lb.build();
+    const lb = new canvacord.LeaderboardBuilder()
+      .setVariant(canvacord.LeaderboardVariants.Horizontal)
+      .setBackground(includeBackground ? LEADERBOARD_BG : AVATAR_FALLBACK)
+      .setBackgroundColor("#081327")
+      .setHeader(header)
+      .setTextStyles({ level: "LEVEL", xp: "TOTAL XP", rank: "RANK" })
+      .setPlayers(inputPlayers);
+
+    return lb.build();
+  };
+
+  let buffer;
+  try {
+    buffer = await buildBuffer(players, { includeIcon: true, includeBackground: true });
+  } catch (error) {
+    if (!isAssetLoadError(error)) throw error;
+    console.warn("[Levels] Leaderboard asset load failed; retrying with fallback avatars.", error.message);
+    const fallbackPlayers = players.map((p) => ({ ...p, avatar: AVATAR_FALLBACK }));
+    buffer = await buildBuffer(fallbackPlayers, { includeIcon: false, includeBackground: false });
+  }
+
   return new AttachmentBuilder(buffer, { name: "leaderboard-card.png" });
 }
 

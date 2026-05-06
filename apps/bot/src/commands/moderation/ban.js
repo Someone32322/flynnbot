@@ -64,7 +64,7 @@ module.exports = {
 
     const target = await resolveModerationTarget(interaction);
     if (!target) {
-      await interaction.editReply(ephemeral("Provide a user or user ID to ban."));
+      await interaction.editReply(ephemeral("Usage: /ban <user or user_id> [time] [reason]"));
       return;
     }
 
