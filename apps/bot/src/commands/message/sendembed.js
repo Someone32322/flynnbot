@@ -42,14 +42,26 @@ module.exports = {
     });
 
     if (!template) {
-      // Diagnostic: list all template names for this guild so we can verify the lookup
-      const all = await EmbedTemplate.find({ guildId: interaction.guildId }).select('name').lean();
-      const nameList = all.length ? all.map((t) => `\`${t.name}\``).join(', ') : '*(none saved)*';
+      // Diagnostic: find all templates regardless of guild to detect DB/guildId mismatch
+      const allInGuild = await EmbedTemplate.find({ guildId: interaction.guildId }).select('name').lean();
+      const allInDb    = await EmbedTemplate.find({}).select('guildId name').lean();
+      const dbName = EmbedTemplate.db?.name ?? 'unknown';
+
+      console.log(`[sendembed] DB: ${dbName} | guildId: ${interaction.guildId}`);
+      console.log(`[sendembed] All templates in DB:`, allInDb.map(t => `${t.guildId}::${t.name}`));
+
+      const guildList = allInGuild.length ? allInGuild.map((t) => `\`${t.name}\``).join(', ') : '*(none)*';
+      const dbList    = allInDb.length
+        ? allInDb.map((t) => `${t.guildId === interaction.guildId ? '✅' : '❌'} \`${t.guildId}\` → \`${t.name}\``).join('\n> ')
+        : '*(collection is empty)*';
+
       return interaction.reply(
         ephemeral(
-          `No embed template found with name \`${name}\`.\n` +
-          `> Guild ID searched: \`${interaction.guildId}\`\n` +
-          `> Templates in this guild: ${nameList}`
+          `No template found for \`${name}\`.\n` +
+          `> **DB:** \`${dbName}\`\n` +
+          `> **Guild ID:** \`${interaction.guildId}\`\n` +
+          `> **In this guild:** ${guildList}\n` +
+          `> **All in DB:**\n> ${dbList}`
         )
       );
     }
