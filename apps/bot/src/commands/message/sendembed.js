@@ -42,7 +42,16 @@ module.exports = {
     });
 
     if (!template) {
-      return interaction.reply(ephemeral(`No embed template found with name \`${name}\`. Use \`/predefinedreasons\` or the dashboard to create one.`));
+      // Diagnostic: list all template names for this guild so we can verify the lookup
+      const all = await EmbedTemplate.find({ guildId: interaction.guildId }).select('name').lean();
+      const nameList = all.length ? all.map((t) => `\`${t.name}\``).join(', ') : '*(none saved)*';
+      return interaction.reply(
+        ephemeral(
+          `No embed template found with name \`${name}\`.\n` +
+          `> Guild ID searched: \`${interaction.guildId}\`\n` +
+          `> Templates in this guild: ${nameList}`
+        )
+      );
     }
 
     const embed = new EmbedBuilder().setColor(template.color ?? 0x0f52ba);
