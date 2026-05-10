@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, ChannelType } = require('discord.js');
 const { requireModeratorAccess, buildSapphireEmbed, ephemeral } = require('../../lib/moderation');
 
 module.exports = {
@@ -7,7 +7,16 @@ module.exports = {
     .setDescription('Send a plain-text message to a channel.')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
     .addChannelOption((o) =>
-      o.setName('channel').setDescription('Target channel').setRequired(true)
+      o
+        .setName('channel')
+        .setDescription('Target channel')
+        .setRequired(true)
+        .addChannelTypes(
+          ChannelType.GuildText,
+          ChannelType.GuildAnnouncement,
+          ChannelType.PublicThread,
+          ChannelType.PrivateThread,
+        )
     )
     .addStringOption((o) =>
       o.setName('content').setDescription('Message content (max 2000 chars)').setRequired(true).setMaxLength(2000)

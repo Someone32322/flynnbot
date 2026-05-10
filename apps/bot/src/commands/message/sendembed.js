@@ -1,4 +1,4 @@
-const { EmbedBuilder, SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { EmbedBuilder, SlashCommandBuilder, PermissionFlagsBits, ChannelType } = require('discord.js');
 const { requireModeratorAccess, ephemeral } = require('../../lib/moderation');
 const { EmbedTemplate } = require('../../models/EmbedTemplate');
 
@@ -8,7 +8,16 @@ module.exports = {
     .setDescription('Send a saved embed template to a channel.')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
     .addChannelOption((o) =>
-      o.setName('channel').setDescription('Target channel').setRequired(true)
+      o
+        .setName('channel')
+        .setDescription('Target channel')
+        .setRequired(true)
+        .addChannelTypes(
+          ChannelType.GuildText,
+          ChannelType.GuildAnnouncement,
+          ChannelType.PublicThread,
+          ChannelType.PrivateThread,
+        )
     )
     .addStringOption((o) =>
       o.setName('name').setDescription('Name of the embed template to send').setRequired(true)
@@ -19,15 +28,17 @@ module.exports = {
     if (!guard) return;
 
     const channel = interaction.options.getChannel('channel', true);
-    const name = interaction.options.getString('name', true);
+    const name = interaction.options.getString('name', true).trim();
 
     if (!channel.isTextBased()) {
       return interaction.reply(ephemeral('That channel cannot receive messages.'));
     }
 
+    // Escape regex special characters so template names match literally
+    const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const template = await EmbedTemplate.findOne({
       guildId: interaction.guildId,
-      name: { $regex: `^${name}$`, $options: 'i' },
+      name: { $regex: `^${escapedName}$`, $options: 'i' },
     });
 
     if (!template) {
