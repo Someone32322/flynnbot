@@ -16,9 +16,9 @@ module.exports = {
         `Commands are enabled per-server via the dashboard. Head there to configure which commands are available in this server, set up role restrictions, custom prefixes, and more.\n\n` +
         `> **Dashboard:** [click here](${DASHBOARD_URL})\n` +
         `> **Getting started:** Log in with Discord, select your server, then enable any commands you want.\n\n` +
-        `> **Support:** If you have any questions or need help, join our [support server](https://discord.gg/v6VjBw9ShP).\n` +
+        `> **Support:** If you have any questions or need help, join our [support server](https://discord.gg/SA4GjNsQ6V).\n` +
         `> **Terms of service:** By using FlynnBot, you agree to the [terms of service](https://flynndash.com/terms) and [privacy policy](https://flynndash.com/privacy).\n\n` +
-        `**Have questions?** Join our [support server](https://discord.gg/v6VjBw9ShP) and ask away!`
+        `**Have questions?** Join our [support server](https://discord.gg/SA4GjNsQ6V) and ask away!`
       )
       .setFooter({ text: 'FlynnBot • /help is the only global command — all others are enabled via the dashboard.' });
 
