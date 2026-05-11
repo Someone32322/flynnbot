@@ -4,6 +4,7 @@ const { handleStickyForChannel, handleCommandTrigger } = require('../lib/schedul
 const { maybeAwardXpForMessage } = require('../lib/leveling');
 const { handleAIMessage } = require('../lib/ai');
 const { handleCustomCommands } = require('../lib/customCommands');
+const { handleAutoMod } = require('../lib/automod');
 const COMMAND_META = require('../commands/meta');
 
 // Maps discord.js option type numbers to their names
@@ -162,6 +163,10 @@ module.exports = {
   name: 'messageCreate',
   async execute(message) {
     if (message.author.bot || !message.guild) return;
+
+    // ── AutoMod (bot-side rules) ───────────────────────────────
+    // Run first — if a message is deleted by automod we still allow XP/etc to proceed
+    handleAutoMod(message).catch(() => {});
 
     // ── Leveling XP gain ───────────────────────────────────────
     maybeAwardXpForMessage(message).catch(() => {});

@@ -3,6 +3,9 @@ const { ModerationCase } = require("../models/ModerationCase");
 const { TimedAction } = require("../models/TimedAction");
 const { ScheduledMessage } = require("../models/ScheduledMessage");
 const { closeCase, logToAuditChannel } = require("./moderation");
+const { AutoModConfig } = require("../models/AutoModConfig");
+const { syncDiscordAutoMod } = require("./automod");
+const { checkAutoClose } = require("./tickets");
 
 async function processTimedAction(client, actionDocument) {
   const guild = client.guilds.cache.get(actionDocument.guildId) || (await client.guilds.fetch(actionDocument.guildId).catch(() => null));
@@ -108,6 +111,32 @@ function startScheduler(client) {
   setTimeout(msgTick, 5_000);  // initial run after 5s on startup
   const msgInterval = setInterval(msgTick, 60_000);
   msgInterval.unref();
+
+  // AutoMod sync scheduler — sync Discord native rules when dashboard sets syncNeeded
+  const autoModSyncTick = async () => {
+    try {
+      const configs = await AutoModConfig.find({ syncNeeded: true }).lean();
+      for (const cfg of configs) {
+        const guild = client.guilds.cache.get(cfg.guildId);
+        if (guild) await syncDiscordAutoMod(guild, cfg).catch((err) => {
+          console.error(`[AutoModSync] Failed for guild ${cfg.guildId}:`, err?.message || err);
+        });
+      }
+    } catch (err) {
+      console.error("[AutoModSync] Tick error:", err?.message || err);
+    }
+  };
+  setTimeout(autoModSyncTick, 10_000);
+  const autoModInterval = setInterval(autoModSyncTick, 30_000);
+  autoModInterval.unref();
+
+  // Ticket auto-close scheduler — close stale tickets based on autoCloseHours
+  const ticketAutoCloseTick = () => checkAutoClose(client).catch((err) => {
+    console.error("[TicketAutoClose] Error:", err?.message || err);
+  });
+  setTimeout(ticketAutoCloseTick, 15_000);
+  const ticketAutoCloseInterval = setInterval(ticketAutoCloseTick, 10 * 60_000);
+  ticketAutoCloseInterval.unref();
 
   console.log("[Scheduler] Message scheduler started (60-second interval)");
 }

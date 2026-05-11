@@ -3,6 +3,7 @@ const { GuildConfig } = require("../models/GuildConfig");
 const { ReactionRole } = require("../models/ReactionRole");
 const { ScheduledMessage } = require("../models/ScheduledMessage");
 const { handlePaginationButton } = require("../lib/pagination");
+const { createTicket, closeTicket, claimTicket } = require("../lib/tickets");
 
 // Commands exempt from per-guild settings checks (always accessible)
 const GLOBAL_COMMANDS = new Set(['help']);
@@ -27,6 +28,30 @@ module.exports = {
   async execute(interaction) {
     if (interaction.isButton() && interaction.customId.startsWith("paginate:")) {
       await handlePaginationButton(interaction);
+      return;
+    }
+
+    // ── Ticket system buttons ────────────────────────────────────
+    if (interaction.isButton() && interaction.customId.startsWith("ticket:")) {
+      const parts = interaction.customId.split(":");
+      const action = parts[1];
+      if (action === "create") {
+        const panelId = parts[2];
+        const category = parts[3] ? decodeURIComponent(parts[3]) : "General";
+        await createTicket(interaction, panelId, category).catch((err) => {
+          console.error("[Tickets] createTicket error:", err?.message || err);
+        });
+      } else if (action === "close") {
+        const ticketId = parts[2];
+        await closeTicket(interaction, ticketId).catch((err) => {
+          console.error("[Tickets] closeTicket error:", err?.message || err);
+        });
+      } else if (action === "claim") {
+        const ticketId = parts[2];
+        await claimTicket(interaction, ticketId).catch((err) => {
+          console.error("[Tickets] claimTicket error:", err?.message || err);
+        });
+      }
       return;
     }
 
