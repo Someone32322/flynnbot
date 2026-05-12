@@ -1,5 +1,6 @@
 const { ReactionRole } = require("../models/ReactionRole");
 const { ScheduledMessage } = require("../models/ScheduledMessage");
+const starboard = require("../lib/starboard");
 
 module.exports = {
   name: "messageReactionAdd",
@@ -40,7 +41,11 @@ module.exports = {
       "actionRows.rowType": "emoji",
     }).catch(() => null);
 
-    if (!sm) return;
+    if (!sm) {
+      // ── Starboard ────────────────────────────────────────────
+      await starboard.handleStarReaction(reaction, user, true).catch(() => null);
+      return;
+    }
 
     for (const row of sm.actionRows || []) {
       if (row.rowType !== "emoji") continue;

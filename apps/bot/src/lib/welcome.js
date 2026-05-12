@@ -151,4 +151,40 @@ function invalidateCache(guildId) {
   configCache.delete(guildId);
 }
 
-module.exports = { handleMemberJoin, handleMemberLeave, invalidateCache };
+// ── Test send (triggered by dashboard) ────────────────────────────────────────
+async function sendTestWelcomeMessage(guild, type, channelId) {
+  const config = await getConfig(guild.id);
+  if (!config) return;
+
+  const channel = guild.channels.cache.get(channelId);
+  if (!channel) return;
+
+  const user = guild.client.user;
+  const vars = {
+    user: `<@${user.id}>`,
+    tag: user.tag ?? user.username,
+    username: user.username,
+    server: guild.name,
+    count: String(guild.memberCount),
+    id: user.id,
+    accountAge: '30',
+  };
+
+  const section = type === 'welcome' ? config.welcome : config.goodbye;
+  if (!section) return;
+
+  if (section.embedEnabled) {
+    const embed = new EmbedBuilder()
+      .setColor(section.embed?.color || (type === 'welcome' ? '#5865f2' : '#ef4444'))
+      .setTitle(interpolate(section.embed?.title || (type === 'welcome' ? 'Welcome to {server}!' : '{tag} left'), vars))
+      .setDescription(interpolate(section.embed?.description || (type === 'welcome' ? 'Hey {user}!' : '**{tag}** has left.'), vars));
+    if (section.embed?.footer) embed.setFooter({ text: interpolate(section.embed.footer, vars) });
+    if (section.embed?.thumbnail) embed.setThumbnail(user.displayAvatarURL({ size: 256 }));
+    await channel.send({ content: `*(Test ${type} message)*`, embeds: [embed] }).catch(() => null);
+  } else {
+    const msg = interpolate(section.message || (type === 'welcome' ? 'Welcome {user}!' : '**{tag}** has left.'), vars);
+    await channel.send({ content: `*(Test ${type} message)* ${msg}` }).catch(() => null);
+  }
+}
+
+module.exports = { handleMemberJoin, handleMemberLeave, invalidateCache, sendTestWelcomeMessage };

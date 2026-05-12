@@ -367,7 +367,7 @@ async function deployPanel(guild, panelId) {
   }
 
   const embed = new EmbedBuilder()
-    .setColor(0x5865f2)
+    .setColor(panel.embedColor || 0x5865f2)
     .setTitle(panel.name)
     .setDescription(panel.description || 'Click a button below to open a support ticket.');
 

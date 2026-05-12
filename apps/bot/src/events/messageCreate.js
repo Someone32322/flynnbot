@@ -5,6 +5,7 @@ const { maybeAwardXpForMessage } = require('../lib/leveling');
 const { handleAIMessage } = require('../lib/ai');
 const { handleCustomCommands } = require('../lib/customCommands');
 const { handleAutoMod } = require('../lib/automod');
+const { handleMessage: handleAFKMessage } = require('../lib/afk');
 const COMMAND_META = require('../commands/meta');
 
 // Maps discord.js option type numbers to their names
@@ -182,6 +183,9 @@ module.exports = {
 
     // ── Custom Commands ────────────────────────────────────────
     handleCustomCommands(message).catch(() => {});
+
+    // ── AFK System ─────────────────────────────────────────────
+    handleAFKMessage(message).catch(() => {});
 
     // Load guild config
     const guildConfig = await GuildConfig.findOne({ guildId: message.guild.id });

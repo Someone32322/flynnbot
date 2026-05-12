@@ -4,6 +4,8 @@ const { ReactionRole } = require("../models/ReactionRole");
 const { ScheduledMessage } = require("../models/ScheduledMessage");
 const { handlePaginationButton } = require("../lib/pagination");
 const { createTicket, closeTicket, claimTicket } = require("../lib/tickets");
+const { handleGiveawayButton } = require("../lib/giveaways");
+const { handlePollButton } = require("../lib/polls");
 
 // Commands exempt from per-guild settings checks (always accessible)
 const GLOBAL_COMMANDS = new Set(['help']);
@@ -28,6 +30,24 @@ module.exports = {
   async execute(interaction) {
     if (interaction.isButton() && interaction.customId.startsWith("paginate:")) {
       await handlePaginationButton(interaction);
+      return;
+    }
+
+    // ── Giveaway buttons ─────────────────────────────────────────
+    if (interaction.isButton() && interaction.customId.startsWith("giveaway:")) {
+      await handleGiveawayButton(interaction).catch((err) => {
+        console.error("[Giveaway] button error:", err.message);
+        interaction.reply({ content: "An error occurred.", ephemeral: true }).catch(() => null);
+      });
+      return;
+    }
+
+    // ── Poll buttons ─────────────────────────────────────────────
+    if (interaction.isButton() && interaction.customId.startsWith("poll:vote:")) {
+      await handlePollButton(interaction).catch((err) => {
+        console.error("[Poll] button error:", err.message);
+        interaction.reply({ content: "An error occurred.", ephemeral: true }).catch(() => null);
+      });
       return;
     }
 

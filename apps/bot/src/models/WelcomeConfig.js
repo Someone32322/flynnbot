@@ -43,6 +43,11 @@ const welcomeConfigSchema = new mongoose.Schema({
       default: () => ({ color: '#ef4444' }),
     },
   },
+  testSend: {
+    pending: { type: Boolean, default: false },
+    type: { type: String, enum: ['welcome', 'goodbye'], default: 'welcome' },
+    channelId: { type: String, default: null },
+  },
 }, { timestamps: true });
 
 const WelcomeConfig = mongoose.models.WelcomeConfig

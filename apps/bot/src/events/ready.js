@@ -3,6 +3,7 @@ const { prunePaginationSessions } = require("../lib/pagination");
 const { startScheduler } = require("../lib/scheduler");
 const { setupLogging } = require("../lib/logging");
 const { startHealthReporter } = require("../lib/health");
+const inviteTracker = require("../lib/inviteTracker");
 
 module.exports = {
   name: "clientReady",
@@ -12,6 +13,7 @@ module.exports = {
     startScheduler(client);
     setupLogging(client);
     startHealthReporter(client);
+    inviteTracker.initAllGuilds(client).catch(() => null);
 
     const rotatingStatuses = [
       { name: "tickets", type: ActivityType.Watching },

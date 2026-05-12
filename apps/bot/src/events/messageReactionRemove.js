@@ -1,6 +1,7 @@
 const { ReactionRole } = require("../models/ReactionRole");
 const { ScheduledMessage } = require("../models/ScheduledMessage");
 const { _executeEmojiAction, _emojiMatches } = require("./messageReactionAdd");
+const starboard = require("../lib/starboard");
 
 module.exports = {
   name: "messageReactionRemove",
@@ -40,7 +41,11 @@ module.exports = {
       "actionRows.rowType": "emoji",
     }).catch(() => null);
 
-    if (!sm) return;
+    if (!sm) {
+      // ── Starboard (remove star) ──────────────────────────────
+      await starboard.handleStarReaction(reaction, user, false).catch(() => null);
+      return;
+    }
 
     for (const row of sm.actionRows || []) {
       if (row.rowType !== "emoji") continue;

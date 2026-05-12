@@ -4,8 +4,14 @@ const { TimedAction } = require("../models/TimedAction");
 const { ScheduledMessage } = require("../models/ScheduledMessage");
 const { closeCase, logToAuditChannel } = require("./moderation");
 const { AutoModConfig } = require("../models/AutoModConfig");
+const { TicketConfig } = require("../models/TicketConfig");
+const { WelcomeConfig } = require("../models/WelcomeConfig");
 const { syncDiscordAutoMod } = require("./automod");
-const { checkAutoClose } = require("./tickets");
+const { checkAutoClose, deployPanel } = require("./tickets");
+const { sendTestWelcomeMessage } = require("./welcome");
+const { checkGiveaways } = require("./giveaways");
+const { checkPolls } = require("./polls");
+const { updateAllGuilds: updateStatsChannels } = require("./stats");
 
 async function processTimedAction(client, actionDocument) {
   const guild = client.guilds.cache.get(actionDocument.guildId) || (await client.guilds.fetch(actionDocument.guildId).catch(() => null));
@@ -137,6 +143,81 @@ function startScheduler(client) {
   setTimeout(ticketAutoCloseTick, 15_000);
   const ticketAutoCloseInterval = setInterval(ticketAutoCloseTick, 10 * 60_000);
   ticketAutoCloseInterval.unref();
+
+  // Ticket panel deploy — sends panel to Discord when dashboard marks pendingDeploy
+  const ticketDeployTick = async () => {
+    try {
+      const configs = await TicketConfig.find({ 'panels.pendingDeploy': true }).lean();
+      for (const cfg of configs) {
+        const guild = client.guilds.cache.get(cfg.guildId);
+        if (!guild) continue;
+        for (const panel of cfg.panels) {
+          if (!panel.pendingDeploy) continue;
+          const result = await deployPanel(guild, panel.panelId).catch((err) => ({ error: err.message }));
+          if (result?.error) {
+            console.error(`[TicketDeploy] Panel ${panel.panelId} in ${cfg.guildId}: ${result.error}`);
+          } else {
+            console.log(`[TicketDeploy] Deployed panel ${panel.panelId} in ${cfg.guildId}`);
+          }
+          // Clear the pending flag regardless of outcome
+          await TicketConfig.updateOne(
+            { guildId: cfg.guildId, 'panels.panelId': panel.panelId },
+            { $set: { 'panels.$.pendingDeploy': false } }
+          ).catch(() => null);
+        }
+      }
+    } catch (err) {
+      console.error('[TicketDeploy] Tick error:', err?.message || err);
+    }
+  };
+  setTimeout(ticketDeployTick, 20_000);
+  const ticketDeployInterval = setInterval(ticketDeployTick, 30_000);
+  ticketDeployInterval.unref();
+
+  // Welcome test send — sends a preview message to a channel when dashboard queues it
+  const welcomeTestTick = async () => {
+    try {
+      const configs = await WelcomeConfig.find({ 'testSend.pending': true }).lean();
+      for (const cfg of configs) {
+        const guild = client.guilds.cache.get(cfg.guildId);
+        await WelcomeConfig.updateOne({ guildId: cfg.guildId }, { $set: { 'testSend.pending': false } }).catch(() => null);
+        if (!guild) continue;
+        await sendTestWelcomeMessage(guild, cfg.testSend.type, cfg.testSend.channelId).catch((err) => {
+          console.error(`[WelcomeTest] Guild ${cfg.guildId}: ${err.message}`);
+        });
+        console.log(`[WelcomeTest] Sent ${cfg.testSend.type} test for guild ${cfg.guildId}`);
+      }
+    } catch (err) {
+      console.error('[WelcomeTest] Tick error:', err?.message || err);
+    }
+  };
+  setTimeout(welcomeTestTick, 25_000);
+  const welcomeTestInterval = setInterval(welcomeTestTick, 30_000);
+  welcomeTestInterval.unref();
+
+  // Giveaway end tick — check every 30s for giveaways past their end time
+  const giveawayTick = () => checkGiveaways(client).catch((err) => {
+    console.error('[Giveaway] Tick error:', err?.message || err);
+  });
+  setTimeout(giveawayTick, 10_000);
+  const giveawayInterval = setInterval(giveawayTick, 30_000);
+  giveawayInterval.unref();
+
+  // Poll auto-close tick — check every 30s for polls past their end time
+  const pollTick = () => checkPolls(client).catch((err) => {
+    console.error('[Poll] Tick error:', err?.message || err);
+  });
+  setTimeout(pollTick, 12_000);
+  const pollInterval = setInterval(pollTick, 30_000);
+  pollInterval.unref();
+
+  // Stats channels update tick — update voice channel names every 10 minutes
+  const statsTick = () => updateStatsChannels(client).catch((err) => {
+    console.error('[Stats] Tick error:', err?.message || err);
+  });
+  setTimeout(statsTick, 30_000);
+  const statsInterval = setInterval(statsTick, 10 * 60_000);
+  statsInterval.unref();
 
   console.log("[Scheduler] Message scheduler started (60-second interval)");
 }

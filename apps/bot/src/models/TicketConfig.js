@@ -10,9 +10,9 @@ const ticketButtonSchema = new mongoose.Schema({
 
 const ticketPanelSchema = new mongoose.Schema({
   panelId: { type: String, default: () => randomUUID().split('-')[0] },
-  name: { type: String, required: true },
+  name: { type: String, default: 'Support' },
   description: { type: String, default: '' },
-  channelId: { type: String, required: true },
+  channelId: { type: String, default: null },
   messageId: { type: String, default: null },
   categoryId: { type: String, default: null },
   supportRoles: { type: [String], default: [] },
@@ -29,6 +29,9 @@ const ticketPanelSchema = new mongoose.Schema({
     channelId: { type: String, default: null },
   },
   buttons: { type: [ticketButtonSchema], default: () => [{}] },
+  embedColor: { type: String, default: '#5865f2' },
+  embedTitle: { type: String, default: '' },
+  pendingDeploy: { type: Boolean, default: false },
 }, { _id: false });
 
 const ticketConfigSchema = new mongoose.Schema({
