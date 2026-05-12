@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const { buildPollEmbed, buildPollComponents, endPoll } = require('../../lib/polls');
 const { Poll } = require('../../models/Poll');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID: uuidv4 } = require('crypto');
 
 module.exports = {
   data: new SlashCommandBuilder()
