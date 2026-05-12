@@ -27,9 +27,9 @@ module.exports = {
     .addSubcommand((sub) =>
       sub.setName('end')
         .setDescription('End an active poll')
-        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
         .addStringOption((o) => o.setName('message_id').setDescription('Message ID of the poll').setRequired(true))
-    ),
+    )
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
