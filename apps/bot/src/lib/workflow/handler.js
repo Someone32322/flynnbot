@@ -13,6 +13,9 @@
 const Workflow = require('../../models/Workflow');
 const WorkflowEngine = require('./WorkflowEngine');
 const { getComponentRegistry } = require('./componentRegistry');
+const { EXEC_STATUS } = require('./types');
+
+const MESSAGE_TRIGGER_TYPES = ['prefix', 'contains', 'exact', 'regex', 'prefix_command', 'exact_match'];
 
 class WorkflowHandler {
   constructor(client) {
@@ -36,18 +39,21 @@ class WorkflowHandler {
     if (!message.guild || message.author.bot) return;
 
     try {
-      // Find workflows with message-based triggers for this guild
-      const triggerTypes = ['prefix_command', 'contains', 'exact_match', 'regex'];
+      // Find workflows with message-based triggers for this guild.
+      // Includes legacy aliases for backwards compatibility.
+      const triggerTypes = MESSAGE_TRIGGER_TYPES;
       const allWorkflows = await Promise.all(
         triggerTypes.map(type => Workflow.findByTrigger(message.guild.id, type))
       );
-      const workflows = allWorkflows.flat();
+      const workflows = allWorkflows
+        .flat()
+        .filter((wf, idx, arr) => arr.findIndex((x) => String(x._id) === String(wf._id)) === idx);
 
       for (const workflow of workflows) {
         if (!workflow.enabled) continue;
 
-        const matches = this._matchMessageTrigger(message, workflow.trigger);
-        if (!matches) continue;
+        const match = this._matchMessageTrigger(message, workflow.trigger);
+        if (!match.matched) continue;
 
         await this._executeWorkflow(workflow, {
           guild: message.guild,
@@ -57,7 +63,9 @@ class WorkflowHandler {
           triggerMeta: {
             triggerType: workflow.trigger.type,
             matchedValue: workflow.trigger.value,
-            args: this._extractMessageArgs(message),
+            args: match.args,
+            argsNamed: match.argsNamed,
+            commandName: match.commandName,
           },
         });
       }
@@ -114,6 +122,8 @@ class WorkflowHandler {
 
     try {
       const workflows = await Workflow.findByTrigger(member.guild.id, 'member_join');
+      const channel = this._resolveGuildDefaultChannel(member.guild);
+      if (!channel) return;
 
       for (const workflow of workflows) {
         if (!workflow.enabled) continue;
@@ -121,7 +131,7 @@ class WorkflowHandler {
         await this._executeWorkflow(workflow, {
           guild: member.guild,
           member,
-          channel: null,
+          channel,
           message: null,
           triggerMeta: { triggerType: 'member_join' },
         });
@@ -141,6 +151,8 @@ class WorkflowHandler {
 
     try {
       const workflows = await Workflow.findByTrigger(member.guild.id, 'member_leave');
+      const channel = this._resolveGuildDefaultChannel(member.guild);
+      if (!channel) return;
 
       for (const workflow of workflows) {
         if (!workflow.enabled) continue;
@@ -148,7 +160,7 @@ class WorkflowHandler {
         await this._executeWorkflow(workflow, {
           guild: member.guild,
           member,
-          channel: null,
+          channel,
           message: null,
           triggerMeta: { triggerType: 'member_leave' },
         });
@@ -170,7 +182,7 @@ class WorkflowHandler {
     try {
       const workflows = await Workflow.findByTrigger(
         reaction.message.guild.id,
-        'reaction_add'
+        'reaction'
       );
 
       for (const workflow of workflows) {
@@ -208,46 +220,119 @@ class WorkflowHandler {
     const content = message.content.toLowerCase();
     const triggerValue = trigger.value?.toLowerCase() || '';
 
+    const extractPrefix = () => {
+      const parsed = this._extractPrefixArgs(message, trigger);
+      if (!parsed) return { matched: false, args: [], argsNamed: {}, commandName: '' };
+      return {
+        matched: true,
+        args: parsed.args,
+        argsNamed: parsed.argsNamed,
+        commandName: parsed.commandName,
+      };
+    };
+
     switch (trigger.type) {
-      case 'prefix_command': {
-        const prefix = process.env.BOT_PREFIX || '!';
-        const cmdPrefix = `${prefix}${triggerValue}`;
-        return content.startsWith(cmdPrefix);
-      }
+      case 'prefix_command':
+      case 'prefix':
+        return extractPrefix();
 
       case 'contains':
-        return content.includes(triggerValue);
+        return { matched: content.includes(triggerValue), args: [], argsNamed: {}, commandName: '' };
 
       case 'exact_match':
-        return content === triggerValue;
+      case 'exact':
+        return { matched: content === triggerValue, args: [], argsNamed: {}, commandName: '' };
 
       case 'regex': {
         try {
           const re = new RegExp(triggerValue, 'i');
-          return re.test(content);
+          return { matched: re.test(content), args: [], argsNamed: {}, commandName: '' };
         } catch {
           console.warn(`[WorkflowHandler] Invalid regex trigger: ${triggerValue}`);
-          return false;
+          return { matched: false, args: [], argsNamed: {}, commandName: '' };
         }
       }
 
       default:
-        return false;
+        return { matched: false, args: [], argsNamed: {}, commandName: '' };
     }
   }
 
-  _extractMessageArgs(message) {
+  _extractPrefixArgs(message, trigger) {
     const prefix = process.env.BOT_PREFIX || '!';
-    const contentWithoutPrefix = message.content.startsWith(prefix)
-      ? message.content.slice(prefix.length).trim()
-      : message.content.trim();
+    if (!message.content.startsWith(prefix)) return null;
 
-    return contentWithoutPrefix.split(/\s+/);
+    const text = message.content.slice(prefix.length).trim();
+    if (!text) return null;
+
+    const parts = text.split(/\s+/);
+    const commandName = String(parts[0] || '').toLowerCase();
+    const expected = String(trigger?.value || '').toLowerCase();
+    if (!commandName || !expected || commandName !== expected) return null;
+
+    const args = parts.slice(1);
+    const argsNamed = {};
+    if (Array.isArray(trigger?.options) && trigger.options.length) {
+      for (let i = 0; i < trigger.options.length; i++) {
+        const opt = trigger.options[i];
+        if (!opt?.name) continue;
+        argsNamed[opt.name] = i === trigger.options.length - 1 ? args.slice(i).join(' ') : (args[i] ?? '');
+      }
+    }
+
+    return { commandName, args, argsNamed };
   }
 
   async _handleSlashCommand(interaction) {
-    // TODO: Implement slash command workflow routing
-    // For now, let slash command handlers pass through to existing system
+    const workflows = await Workflow.findByTrigger(interaction.guild.id, 'slash');
+    if (!workflows?.length) return;
+
+    const commandName = String(interaction.commandName || '').toLowerCase();
+    for (const workflow of workflows) {
+      if (!workflow.enabled) continue;
+      const triggerName = String(workflow.trigger?.value || '').toLowerCase();
+      if (!triggerName || triggerName !== commandName) continue;
+
+      const argsNamed = {};
+      if (interaction.options && Array.isArray(workflow.trigger?.options)) {
+        for (const opt of workflow.trigger.options) {
+          if (!opt?.name) continue;
+          const str = interaction.options.getString(opt.name, false);
+          if (str !== null && str !== undefined) {
+            argsNamed[opt.name] = str;
+            continue;
+          }
+          const num = interaction.options.getNumber(opt.name, false);
+          if (num !== null && num !== undefined) {
+            argsNamed[opt.name] = String(num);
+            continue;
+          }
+          const bool = interaction.options.getBoolean(opt.name, false);
+          if (bool !== null && bool !== undefined) {
+            argsNamed[opt.name] = String(bool);
+            continue;
+          }
+          const user = interaction.options.getUser(opt.name, false);
+          if (user) {
+            argsNamed[opt.name] = `<@${user.id}>`;
+            argsNamed[`${opt.name}Id`] = user.id;
+          }
+        }
+      }
+
+      await this._executeWorkflow(workflow, {
+        guild: interaction.guild,
+        member: interaction.member,
+        channel: interaction.channel,
+        interaction,
+        triggerMeta: {
+          triggerType: 'slash',
+          commandName,
+          args: Object.values(argsNamed),
+          argsNamed,
+        },
+      });
+    }
   }
 
   async _handleButton(interaction) {
@@ -339,11 +424,11 @@ class WorkflowHandler {
     try {
       const result = await this.engine.run(workflow, context);
 
-      if (result.status === 'success') {
+      if (result.status === EXEC_STATUS.COMPLETED) {
         this.executionStats.successfulExecutions++;
       } else {
         this.executionStats.failedExecutions++;
-        console.warn(`[WorkflowHandler] Workflow failed: ${workflow._id} - ${result.error}`);
+        console.warn(`[WorkflowHandler] Workflow did not complete: ${workflow._id} [${result.status}]`);
       }
 
       return result;
@@ -373,6 +458,19 @@ class WorkflowHandler {
       ...this.executionStats,
       componentRegistry: this.componentRegistry.getStats(),
     };
+  }
+
+  _resolveGuildDefaultChannel(guild) {
+    if (!guild) return null;
+    if (guild.systemChannel) return guild.systemChannel;
+    const textLike = guild.channels?.cache?.find((ch) => {
+      try {
+        return ch && typeof ch.send === 'function' && ch.viewable;
+      } catch {
+        return false;
+      }
+    });
+    return textLike || null;
   }
 
   /**

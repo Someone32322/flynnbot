@@ -103,6 +103,11 @@ class VariableManager {
 
   _getValue(key) {
     const ctx = this.ctx;
+    const named = ctx.triggerMeta?.argsNamed || {};
+
+    if (Object.prototype.hasOwnProperty.call(named, key)) {
+      return named[key];
+    }
 
     // Loop variables (highest priority)
     if (key === 'loop_index' && ctx.currentLoop) return ctx.currentLoop.index;
@@ -111,17 +116,24 @@ class VariableManager {
     // Built-in Discord context variables
     switch (key) {
       case 'user':         return `<@${ctx.user.id}>`;
+      case 'executor':     return `<@${ctx.user.id}>`;
       case 'username':     return ctx.user.username;
       case 'displayname':  return ctx.member.displayName;
       case 'userid':       return ctx.user.id;
       case 'tag':          return ctx.user.tag ?? ctx.user.username;
       case 'avatar':       return ctx.user.displayAvatarURL?.({ size: 256 }) ?? '';
       case 'server':       return ctx.guild.name;
+      case 'guild':        return ctx.guild.name;
       case 'serverid':     return ctx.guild.id;
+      case 'guildid':      return ctx.guild.id;
       case 'membercount':  return String(ctx.guild.memberCount);
       case 'channel':      return `<#${ctx.channel.id}>`;
       case 'channelname':  return ctx.channel.name;
       case 'channelid':    return ctx.channel.id;
+      case 'message':      return ctx.message?.content ?? '';
+      case 'reason':       return named.reason ?? '';
+      case 'targetUser':
+      case 'targetuser':   return named.targetUser ?? named.user ?? '';
       case 'mentioned': {
         // First mentioned user in a message trigger
         if (ctx.message?.mentions?.users?.first()) {
