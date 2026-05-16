@@ -4,12 +4,17 @@ const { startScheduler } = require("../lib/scheduler");
 const { setupLogging } = require("../lib/logging");
 const { startHealthReporter } = require("../lib/health");
 const inviteTracker = require("../lib/inviteTracker");
+const { initializeWorkflows } = require("../lib/workflow/hooks");
 
 module.exports = {
   name: "clientReady",
   once: true,
   execute(client) {
     console.log(`Ready event fired for ${client.user.tag}`);
+
+    // ── Initialize workflow system ─────────────────────────────
+    initializeWorkflows(client);
+
     startScheduler(client);
     setupLogging(client);
     startHealthReporter(client);

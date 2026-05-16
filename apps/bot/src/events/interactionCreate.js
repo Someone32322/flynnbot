@@ -6,6 +6,7 @@ const { handlePaginationButton } = require("../lib/pagination");
 const { createTicket, closeTicket, claimTicket } = require("../lib/tickets");
 const { handleGiveawayButton } = require("../lib/giveaways");
 const { handlePollButton } = require("../lib/polls");
+const { onInteractionCreate: handleWorkflowInteractions } = require("../lib/workflow/hooks");
 
 // Commands exempt from per-guild settings checks (always accessible)
 const GLOBAL_COMMANDS = new Set(['help']);
@@ -28,6 +29,29 @@ function normalizeDeferredPayload(payload) {
 module.exports = {
   name: "interactionCreate",
   async execute(interaction) {
+    // ── Workflow interactions ────────────────────────────────────
+    // Check for workflow-generated components (buttons, select menus, modals)
+    // This must come before system-level handlers to prevent routing conflicts
+    if (interaction.isButton() && interaction.customId?.startsWith("wf:")) {
+      await handleWorkflowInteractions(interaction).catch((err) => {
+        console.error("[Workflows] Error handling button interaction:", err);
+      });
+      return;
+    }
+    if (interaction.isStringSelectMenu() && interaction.customId?.startsWith("wf:")) {
+      await handleWorkflowInteractions(interaction).catch((err) => {
+        console.error("[Workflows] Error handling select menu:", err);
+      });
+      return;
+    }
+    if (interaction.isModalSubmit() && interaction.customId?.startsWith("wf:")) {
+      await handleWorkflowInteractions(interaction).catch((err) => {
+        console.error("[Workflows] Error handling modal:", err);
+      });
+      return;
+    }
+    // Slash commands are handled later in the existing routing
+
     if (interaction.isButton() && interaction.customId.startsWith("paginate:")) {
       await handlePaginationButton(interaction);
       return;

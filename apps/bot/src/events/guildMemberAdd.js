@@ -2,10 +2,16 @@ const { getPersistentRoles } = require("../lib/moderation");
 const { handleMemberJoin } = require("../lib/welcome");
 const { trackEvent } = require("../lib/analytics");
 const inviteTracker = require("../lib/inviteTracker");
+const { onMemberJoin: handleWorkflowMemberJoin } = require("../lib/workflow/hooks");
 
 module.exports = {
   name: "guildMemberAdd",
   async execute(member) {
+    // ── Workflow member_join triggers ──────────────────────────
+    handleWorkflowMemberJoin(member).catch((err) => {
+      console.error('[Workflows] Error handling member join:', err);
+    });
+
     // Re-apply persistent roles
     const persistentRoles = await getPersistentRoles(member.guild.id, member.id);
     for (const entry of persistentRoles) {

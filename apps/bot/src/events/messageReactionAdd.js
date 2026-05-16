@@ -1,6 +1,7 @@
 const { ReactionRole } = require("../models/ReactionRole");
 const { ScheduledMessage } = require("../models/ScheduledMessage");
 const starboard = require("../lib/starboard");
+const { onReactionAdd: handleWorkflowReaction } = require("../lib/workflow/hooks");
 
 module.exports = {
   name: "messageReactionAdd",
@@ -17,6 +18,11 @@ module.exports = {
 
     const guildId = reaction.message.guildId;
     if (!guildId) return;
+
+    // ── Workflow reaction_add triggers ─────────────────────────
+    handleWorkflowReaction(reaction, user).catch((err) => {
+      console.error('[Workflows] Error handling reaction:', err);
+    });
 
     // ── Reaction Role (emoji type) ─────────────────────────────
     const rr = await ReactionRole.findOne({

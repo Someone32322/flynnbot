@@ -7,6 +7,7 @@ const { handleCustomCommands } = require('../lib/customCommands');
 const { handleAutoMod } = require('../lib/automod');
 const { handleMessage: handleAFKMessage } = require('../lib/afk');
 const { handleAutoSlowmode } = require('../lib/slowmode');
+const { onMessageCreate: handleWorkflowTriggers } = require('../lib/workflow/hooks');
 const COMMAND_META = require('../commands/meta');
 
 // Maps discord.js option type numbers to their names
@@ -165,6 +166,12 @@ module.exports = {
   name: 'messageCreate',
   async execute(message) {
     if (message.author.bot || !message.guild) return;
+
+    // ── Workflow Triggers (message-based) ──────────────────────
+    // Check workflows first (prefix_command, contains, regex, exact_match)
+    handleWorkflowTriggers(message).catch((err) => {
+      console.error('[Workflows] Error handling message triggers:', err);
+    });
 
     // ── AutoMod (bot-side rules) ───────────────────────────────
     // Run first — if a message is deleted by automod we still allow XP/etc to proceed
