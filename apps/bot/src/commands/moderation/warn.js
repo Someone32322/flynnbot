@@ -14,6 +14,7 @@ const {
   sendDmNotice,
   shouldSendDm,
 } = require("../../lib/moderation");
+const { checkEscalation } = require('../../lib/escalation');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -69,6 +70,11 @@ module.exports = {
     await interaction.reply(
       buildStaffReply("warn", { targetUser: target.targetUser, caseDocument, dmResult })
     );
+
+    // Fire-and-forget escalation check (non-blocking)
+    checkEscalation(interaction.guild, target.targetMember, target.targetUser).catch((err) => {
+      console.error('[Escalation] unhandled error:', err?.message || err);
+    });
   },
   async autocomplete(interaction) {
     const { PredefinedReasons } = require('../../models/PredefinedReasons');

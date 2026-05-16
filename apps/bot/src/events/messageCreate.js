@@ -6,6 +6,7 @@ const { handleAIMessage } = require('../lib/ai');
 const { handleCustomCommands } = require('../lib/customCommands');
 const { handleAutoMod } = require('../lib/automod');
 const { handleMessage: handleAFKMessage } = require('../lib/afk');
+const { handleAutoSlowmode } = require('../lib/slowmode');
 const COMMAND_META = require('../commands/meta');
 
 // Maps discord.js option type numbers to their names
@@ -186,6 +187,9 @@ module.exports = {
 
     // ── AFK System ─────────────────────────────────────────────
     handleAFKMessage(message).catch(() => {});
+
+    // ── Auto-Slowmode ──────────────────────────────────────────
+    handleAutoSlowmode(message).catch(() => {});
 
     // Load guild config
     const guildConfig = await GuildConfig.findOne({ guildId: message.guild.id });

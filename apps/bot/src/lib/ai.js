@@ -75,9 +75,10 @@ async function handleAIMessage(message) {
     }
   }
 
-  const apiKey = process.env.GROQ_API_KEY;
+  // Use per-guild API key from DB first, fall back to env var
+  const apiKey = cfg.apiKey || process.env.GROQ_API_KEY;
   if (!apiKey) {
-    console.warn('[AI] GROQ_API_KEY is not set. Skipping AI response.');
+    console.warn(`[AI] No API key found for guild=${message.guild.id}. Set one in the dashboard or via GROQ_API_KEY env var.`);
     return;
   }
 
