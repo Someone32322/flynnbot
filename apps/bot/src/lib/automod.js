@@ -283,6 +283,23 @@ async function syncDiscordAutoMod(guild, config) {
       }
       return await guild.autoModerationRules.create(createOptions);
     } catch (err) {
+      // Action type 3 (Timeout) is not supported on all servers — retry without it
+      if (err.message?.includes('ACTION_TYPE_DISALLOWED') || err.message?.includes('Action type 3')) {
+        try {
+          const safeOptions = {
+            ...createOptions,
+            actions: createOptions.actions.filter(a => a.type !== AutoModerationActionType.Timeout),
+          };
+          if (ruleId) {
+            const existing = await guild.autoModerationRules.fetch(ruleId).catch(() => null);
+            if (existing) return await existing.edit(safeOptions);
+          }
+          return await guild.autoModerationRules.create(safeOptions);
+        } catch (err2) {
+          console.error(`[AutoMod Sync] Error upserting rule in ${guild.id}:`, err2.message);
+          return null;
+        }
+      }
       console.error(`[AutoMod Sync] Error upserting rule in ${guild.id}:`, err.message);
       return null;
     }
