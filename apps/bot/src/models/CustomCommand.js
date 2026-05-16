@@ -25,6 +25,17 @@ const customCommandSchema = new mongoose.Schema({
   cooldownSeconds: { type: Number, default: 0, min: 0, max: 86400 },
   deleteUserMessage: { type: Boolean, default: false },
   caseSensitive: { type: Boolean, default: false },
+  variables: { type: mongoose.Schema.Types.Mixed, default: {} },
+  slashOptions: {
+    type: [{
+      name: { type: String, required: true, maxlength: 32 },
+      type: { type: Number, default: 3 }, // 3=STRING
+      description: { type: String, default: '', maxlength: 100 },
+      required: { type: Boolean, default: false },
+      choices: { type: mongoose.Schema.Types.Mixed, default: [] },
+    }],
+    default: [],
+  },
 }, { timestamps: true });
 
 customCommandSchema.index({ guildId: 1, name: 1 }, { unique: true });
