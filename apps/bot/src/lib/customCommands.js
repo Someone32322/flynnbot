@@ -91,6 +91,109 @@ async function handleCustomCommands(message) {
   }
 }
 
+/**
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction
+ * @returns {Promise<boolean>} true when a custom slash command was handled
+ */
+async function handleCustomSlashInteraction(interaction) {
+  if (!interaction?.isChatInputCommand?.() || !interaction.guildId) return false;
+
+  const cmds = await getGuildCommands(interaction.guildId);
+  if (!cmds.length) return false;
+
+  const cmd = cmds.find((c) =>
+    normalizeTriggerType(c.triggerType) === 'slash'
+    && String(c.trigger || '').toLowerCase() === String(interaction.commandName || '').toLowerCase()
+  );
+  if (!cmd) return false;
+
+  // Channel restriction
+  if (cmd.allowedChannels?.length && !cmd.allowedChannels.includes(interaction.channelId)) {
+    await safeInteractionReply(interaction, "This command cannot be used in this channel.");
+    return true;
+  }
+
+  // Role restriction
+  if (cmd.allowedRoles?.length) {
+    const memberRoles = interaction.member?.roles?.cache?.map((r) => r.id) || [];
+    const hasRole = cmd.allowedRoles.some((rid) => memberRoles.includes(rid));
+    if (!hasRole) {
+      await safeInteractionReply(interaction, "You don't have the required role to use this command.");
+      return true;
+    }
+  }
+
+  // Cooldown
+  if (cmd.cooldownSeconds > 0) {
+    const key = `${interaction.guildId}:${cmd.name}:${interaction.user.id}`;
+    const lastUsed = cooldownMap.get(key) || 0;
+    const remaining = (lastUsed + cmd.cooldownSeconds * 1000) - Date.now();
+    if (remaining > 0) {
+      await safeInteractionReply(interaction, `Please wait ${Math.ceil(remaining / 1000)}s before using this command again.`);
+      return true;
+    }
+    cooldownMap.set(key, Date.now());
+  }
+
+  const pseudoMessage = buildPseudoMessageFromInteraction(interaction);
+
+  if (Array.isArray(cmd.blocks) && cmd.blocks.length > 0) {
+    await executeWorkflow(cmd.blocks, pseudoMessage).catch(() => {});
+  } else {
+    const responseText = replacePlaceholders(cmd.response, pseudoMessage);
+    await safeInteractionReply(interaction, responseText || 'Done.');
+  }
+
+  return true;
+}
+
+function normalizeTriggerType(type) {
+  const raw = String(type || '').toLowerCase();
+  if (raw === 'slash_command') return 'slash';
+  if (raw === 'prefix_command') return 'prefix';
+  if (raw === 'exact_match') return 'exact';
+  return raw || 'exact';
+}
+
+function buildPseudoMessageFromInteraction(interaction) {
+  const optionPairs = [];
+  for (const opt of (interaction.options?.data || [])) {
+    if (opt?.name) optionPairs.push(`${opt.name}:${String(opt.value ?? '')}`);
+  }
+  const content = `/${interaction.commandName}${optionPairs.length ? ` ${optionPairs.join(' ')}` : ''}`;
+
+  return {
+    author: interaction.user,
+    guild: interaction.guild,
+    member: interaction.member,
+    channel: interaction.channel,
+    channelId: interaction.channelId,
+    content,
+    mentions: { users: { size: 0, first: () => null } },
+    delete: async () => {},
+    react: async () => {},
+    reply: async (payload) => {
+      const normalized = typeof payload === 'string' ? { content: payload } : (payload || {});
+      if (!interaction.deferred && !interaction.replied) {
+        return interaction.reply(normalized).catch(() => null);
+      }
+      return interaction.followUp(normalized).catch(() => null);
+    },
+  };
+}
+
+async function safeInteractionReply(interaction, content) {
+  try {
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.reply({ content, ephemeral: true });
+      return;
+    }
+    await interaction.followUp({ content, ephemeral: true });
+  } catch {
+    // best effort
+  }
+}
+
 function matchesTrigger(content, cmd) {
   const text = cmd.caseSensitive ? content : content.toLowerCase();
   const trigger = cmd.caseSensitive ? cmd.trigger : cmd.trigger.toLowerCase();
@@ -827,4 +930,4 @@ function replacePlaceholders(text, message) {
     .replace(/\{tag\}/gi, message.author.tag || message.author.username);
 }
 
-module.exports = { handleCustomCommands, invalidateCommandCache };
+module.exports = { handleCustomCommands, handleCustomSlashInteraction, invalidateCommandCache };

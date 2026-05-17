@@ -7,6 +7,7 @@ const { createTicket, closeTicket, claimTicket } = require("../lib/tickets");
 const { handleGiveawayButton } = require("../lib/giveaways");
 const { handlePollButton } = require("../lib/polls");
 const { onInteractionCreate: handleWorkflowInteractions } = require("../lib/workflow/hooks");
+const { handleCustomSlashInteraction } = require("../lib/customCommands");
 
 // Commands exempt from per-guild settings checks (always accessible)
 const GLOBAL_COMMANDS = new Set(['help']);
@@ -142,6 +143,12 @@ module.exports = {
     const command = interaction.client.commands.get(interaction.commandName);
 
     if (!command) {
+      const handledCustomSlash = await handleCustomSlashInteraction(interaction).catch((err) => {
+        console.error("[CustomCommands] slash interaction error:", err);
+        return false;
+      });
+      if (handledCustomSlash) return;
+
       await interaction.reply({
         content: "This command is not available.",
         flags: MessageFlags.Ephemeral,
