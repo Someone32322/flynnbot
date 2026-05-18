@@ -29,28 +29,107 @@ const {
   PermissionFlagsBits,
 } = require('discord.js');
 
-// ── Safe math evaluator (no eval, no Function) ─────────────────
-// Supports: + - * / % integers/decimals and floor/ceil/round/min/max/abs
-const MATH_TOKEN_RE = /^[\d\s+\-*/%.()]+$|^(floor|ceil|round|min|max|abs)\s*\(/;
-function evalMath(expr) {
-  // Only allow digits, operators, parens, spaces, and safe function names
-  const safe = String(expr)
-    .replace(/floor\s*\(/g, 'Math.floor(')
-    .replace(/ceil\s*\(/g,  'Math.ceil(')
-    .replace(/round\s*\(/, 'Math.round(')
-    .replace(/min\s*\(/,   'Math.min(')
-    .replace(/max\s*\(/,   'Math.max(')
-    .replace(/abs\s*\(/,   'Math.abs(');
+// ── Safe math evaluator (no eval, no new Function) ─────────────
+// Recursive-descent parser supporting: + - * / % ( ) and floor/ceil/round/min/max/abs
+// Numbers: integers and decimals. Unary minus supported.
+const _SAFE_MATH_FNS = { floor: Math.floor, ceil: Math.ceil, round: Math.round, min: Math.min, max: Math.max, abs: Math.abs };
 
-  // Strict allowlist: digits, whitespace, math operators, parens, Math.* calls
-  if (!/^[\d\s+\-*/%.(),Math.floorceilroundminmaxabs]+$/.test(safe)) {
+function evalMath(expr) {
+  const s = String(expr).trim();
+  // Allowlist: digits, decimal point, operators, parens, whitespace, and function names
+  if (!/^[\d\s+\-*/%.(),a-z]+$/i.test(s)) return NaN;
+
+  // Tokenizer
+  const tokens = [];
+  let i = 0;
+  while (i < s.length) {
+    const c = s[i];
+    if (/\s/.test(c)) { i++; continue; }
+    if (/\d/.test(c) || (c === '.' && /\d/.test(s[i + 1] || ''))) {
+      let num = '';
+      while (i < s.length && /[\d.]/.test(s[i])) num += s[i++];
+      tokens.push({ t: 'num', v: Number(num) });
+    } else if (/[a-z]/i.test(c)) {
+      let name = '';
+      while (i < s.length && /[a-z]/i.test(s[i])) name += s[i++];
+      if (!_SAFE_MATH_FNS[name]) return NaN; // unknown function
+      tokens.push({ t: 'fn', v: name });
+    } else if ('+-*/%()'.includes(c)) {
+      tokens.push({ t: 'op', v: c });
+      i++;
+    } else {
+      return NaN; // unexpected character
+    }
+  }
+
+  let pos = 0;
+  const peek = () => tokens[pos];
+  const eat = () => tokens[pos++];
+
+  function parseExpr() {
+    let left = parseTerm();
+    while (peek() && peek().t === 'op' && (peek().v === '+' || peek().v === '-')) {
+      const op = eat().v;
+      const right = parseTerm();
+      left = op === '+' ? left + right : left - right;
+    }
+    return left;
+  }
+  function parseTerm() {
+    let left = parseFactor();
+    while (peek() && peek().t === 'op' && (peek().v === '*' || peek().v === '/' || peek().v === '%')) {
+      const op = eat().v;
+      const right = parseFactor();
+      if (op === '*') left = left * right;
+      else if (op === '/') left = right !== 0 ? left / right : NaN;
+      else left = left % right;
+    }
+    return left;
+  }
+  function parseFactor() {
+    const tok = peek();
+    if (!tok) return NaN;
+    // Unary minus
+    if (tok.t === 'op' && tok.v === '-') {
+      eat();
+      return -parseFactor();
+    }
+    // Unary plus
+    if (tok.t === 'op' && tok.v === '+') {
+      eat();
+      return parseFactor();
+    }
+    // Parenthesised expression
+    if (tok.t === 'op' && tok.v === '(') {
+      eat(); // consume '('
+      const val = parseExpr();
+      if (peek() && peek().t === 'op' && peek().v === ')') eat(); // consume ')'
+      return val;
+    }
+    // Safe function call: name(arg, arg, ...)
+    if (tok.t === 'fn') {
+      eat(); // function name
+      const open = eat(); // '('
+      if (!open || open.v !== '(') return NaN;
+      const args = [];
+      while (true) {
+        args.push(parseExpr());
+        if (!peek() || peek().v !== ',') break;
+        eat(); // ','
+      }
+      if (peek() && peek().v === ')') eat(); // ')'
+      return _SAFE_MATH_FNS[tok.v](...args);
+    }
+    // Number literal
+    if (tok.t === 'num') {
+      eat();
+      return tok.v;
+    }
     return NaN;
   }
 
   try {
-    // eslint-disable-next-line no-new-func
-    const fn = new Function(`"use strict"; return (${safe});`);
-    const result = fn();
+    const result = parseExpr();
     return Number.isFinite(result) ? result : NaN;
   } catch {
     return NaN;

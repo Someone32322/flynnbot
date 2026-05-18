@@ -15,7 +15,7 @@ const ExecutionContext = require('./ExecutionContext');
 const VariableManager  = require('./VariableManager');
 const BLOCK_EXECUTORS  = require('./blocks/index');
 const Workflow         = require('../../models/Workflow');
-const { LIMITS, EXEC_STATUS } = require('../../../../../flynnbot-dashboard/src/lib/workflow/types');
+const { LIMITS, EXEC_STATUS } = require('./types');
 
 // Per-guild, per-workflow cooldown map: key → expiry timestamp
 const cooldownMap = new Map();

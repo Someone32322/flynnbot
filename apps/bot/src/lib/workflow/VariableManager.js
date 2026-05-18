@@ -72,7 +72,7 @@ class VariableManager {
     const userId = scope === 'user' ? memberId : null;
 
     await WorkflowVariable.findOneAndUpdate(
-      { guildId, userId, name },
+      { guildId, userId, key: name },
       { value: strVal, updatedAt: new Date() },
       { upsert: true, setDefaultsOnInsert: true }
     );
@@ -82,7 +82,7 @@ class VariableManager {
     const { guildId, memberId } = this.ctx;
     const userId = scope === 'user' ? memberId : null;
 
-    const record = await WorkflowVariable.findOne({ guildId, userId, name }).lean();
+    const record = await WorkflowVariable.findOne({ guildId, userId, key: name }).lean();
     return record ? record.value : defaultValue;
   }
 
@@ -96,7 +96,7 @@ class VariableManager {
   async deletePersistent(scope, name) {
     const { guildId, memberId } = this.ctx;
     const userId = scope === 'user' ? memberId : null;
-    await WorkflowVariable.deleteOne({ guildId, userId, name });
+    await WorkflowVariable.deleteOne({ guildId, userId, key: name });
   }
 
   // ── Internal: built-in + flow variable lookup ─────────────

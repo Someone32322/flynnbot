@@ -49,10 +49,10 @@ class WorkflowValidator {
 		}
 		// Types that need a value
 		const needsValue = [
-			TRIGGER_TYPES.SLASH_COMMAND,
-			TRIGGER_TYPES.PREFIX_COMMAND,
+			TRIGGER_TYPES.SLASH,
+			TRIGGER_TYPES.PREFIX,
 			TRIGGER_TYPES.CONTAINS,
-			TRIGGER_TYPES.EXACT_MATCH,
+			TRIGGER_TYPES.EXACT,
 			TRIGGER_TYPES.REGEX,
 		];
 		if (needsValue.includes(trigger.type)) {
