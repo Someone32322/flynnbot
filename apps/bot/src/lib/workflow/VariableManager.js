@@ -150,6 +150,76 @@ class VariableManager {
       }
       case 'command_name': return ctx.triggerMeta?.commandName ?? '';
       case 'trigger_value': return ctx.triggerMeta?.matchedValue ?? '';
+
+      // ── Date / time ───────────────────────────────────────
+      case 'timestamp': return String(Math.floor(Date.now() / 1000));
+      case 'date': {
+        const now = new Date();
+        return now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      }
+      case 'time': {
+        const now = new Date();
+        return now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) + ' UTC';
+      }
+
+      // ── Reaction trigger ──────────────────────────────────
+      case 'reaction_emoji':    return ctx.triggerMeta?.emoji ?? '';
+      case 'reaction_emoji_id': return ctx.triggerMeta?.emojiId ?? ctx.triggerMeta?.emoji ?? '';
+      case 'reactor':           return ctx.triggerMeta?.userId ? `<@${ctx.triggerMeta.userId}>` : `<@${ctx.user.id}>`;
+      case 'reactor_id':        return ctx.triggerMeta?.userId ?? ctx.user.id;
+      case 'reactor_name':      return ctx.triggerMeta?.userName ?? ctx.user.username;
+      case 'reacted_message':   return ctx.message?.content ?? '';
+
+      // ── Member join trigger ───────────────────────────────
+      case 'new_member':        return `<@${ctx.user.id}>`;
+      case 'new_member_id':     return ctx.user.id;
+      case 'new_member_name':   return ctx.user.username;
+      case 'new_member_avatar': return ctx.user.displayAvatarURL?.({ size: 256 }) ?? '';
+      case 'account_age_days': {
+        const createdTs = ctx.user.createdTimestamp ?? 0;
+        return String(Math.floor((Date.now() - createdTs) / 86_400_000));
+      }
+      case 'account_created': {
+        const d = ctx.user.createdAt ?? new Date(ctx.user.createdTimestamp ?? 0);
+        return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      }
+
+      // ── Member leave trigger ──────────────────────────────
+      case 'left_member_name': return ctx.triggerMeta?.memberName ?? ctx.user.username;
+      case 'left_member_id':   return ctx.triggerMeta?.memberId   ?? ctx.user.id;
+
+      // ── Button interaction trigger ────────────────────────
+      case 'button_id':        return ctx.triggerMeta?.buttonId   ?? ctx.interaction?.customId ?? '';
+      case 'button_user':      return `<@${ctx.user.id}>`;
+      case 'button_user_id':   return ctx.user.id;
+      case 'button_user_name': return ctx.user.username;
+
+      // ── Select menu trigger ───────────────────────────────
+      case 'selected_values': {
+        const vals = ctx.triggerMeta?.selectedValues ?? ctx.interaction?.values ?? [];
+        return Array.isArray(vals) ? vals.join(', ') : String(vals);
+      }
+      case 'selected_count': {
+        const vals = ctx.triggerMeta?.selectedValues ?? ctx.interaction?.values ?? [];
+        return String(Array.isArray(vals) ? vals.length : 0);
+      }
+
+      // ── Modal submit trigger ──────────────────────────────
+      case 'modal_1': case 'modal_2': case 'modal_3': case 'modal_4': case 'modal_5': {
+        const idx = parseInt(key.slice(6), 10) - 1;
+        const fields = ctx.triggerMeta?.modalFields ?? {};
+        const values = Object.values(fields);
+        return values[idx] ?? '';
+      }
+
+      // ── Voice state trigger ───────────────────────────────
+      case 'voice_channel':      return ctx.triggerMeta?.channelName ?? '';
+      case 'voice_channel_id':   return ctx.triggerMeta?.channelId   ?? '';
+      case 'voice_channel_name': return ctx.triggerMeta?.channelName ?? '';
+
+      // ── Scheduled trigger ─────────────────────────────────
+      case 'scheduled_name': return ctx.triggerMeta?.scheduledName ?? '';
+      case 'scheduled_time': return new Date().toISOString();
     }
 
     // Trigger arguments (arg_0, arg_1, …)

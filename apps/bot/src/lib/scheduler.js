@@ -12,6 +12,7 @@ const { sendTestWelcomeMessage } = require("./welcome");
 const { checkGiveaways } = require("./giveaways");
 const { checkPolls } = require("./polls");
 const { updateAllGuilds: updateStatsChannels } = require("./stats");
+const { onScheduledTick } = require("./workflow/hooks");
 
 async function processTimedAction(client, actionDocument) {
   const guild = client.guilds.cache.get(actionDocument.guildId) || (await client.guilds.fetch(actionDocument.guildId).catch(() => null));
@@ -218,6 +219,14 @@ function startScheduler(client) {
   setTimeout(statsTick, 30_000);
   const statsInterval = setInterval(statsTick, 10 * 60_000);
   statsInterval.unref();
+
+  // Workflow scheduled trigger tick — check every 60s for scheduled workflows
+  const workflowTick = () => onScheduledTick(client).catch((err) => {
+    console.error('[WorkflowScheduler] Tick error:', err?.message || err);
+  });
+  setTimeout(workflowTick, 45_000); // staggered initial delay
+  const workflowInterval = setInterval(workflowTick, 60_000);
+  workflowInterval.unref();
 
   console.log("[Scheduler] Message scheduler started (60-second interval)");
 }

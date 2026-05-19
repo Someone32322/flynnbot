@@ -2,6 +2,7 @@ const { ReactionRole } = require("../models/ReactionRole");
 const { ScheduledMessage } = require("../models/ScheduledMessage");
 const { _executeEmojiAction, _emojiMatches } = require("./messageReactionAdd");
 const starboard = require("../lib/starboard");
+const { onReactionRemove } = require("../lib/workflow/hooks");
 
 module.exports = {
   name: "messageReactionRemove",
@@ -55,5 +56,8 @@ module.exports = {
         break;
       }
     }
+
+    // ── Workflow reaction_remove trigger ─────────────────────
+    await onReactionRemove(reaction, user).catch(() => {});
   },
 };

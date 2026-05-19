@@ -1,17 +1,23 @@
 'use strict';
 
 const TRIGGER_TYPES = Object.freeze({
-	SLASH:        'slash',
-	PREFIX:       'prefix',
-	CONTAINS:     'contains',
-	EXACT:        'exact',
-	REGEX:        'regex',
-	BUTTON:       'button',
-	SELECT_MENU:  'select_menu',
-	REACTION:     'reaction',
-	MEMBER_JOIN:  'member_join',
-	MEMBER_LEAVE: 'member_leave',
-	SCHEDULED:    'scheduled',
+	SLASH:           'slash',
+	PREFIX:          'prefix',
+	CONTAINS:        'contains',
+	EXACT:           'exact',
+	REGEX:           'regex',
+	BUTTON:          'button',
+	SELECT_MENU:     'select_menu',
+	REACTION_ADD:    'reaction_add',
+	REACTION_REMOVE: 'reaction_remove',
+	MEMBER_JOIN:     'member_join',
+	MEMBER_LEAVE:    'member_leave',
+	MESSAGE_DELETE:  'message_delete',
+	VOICE_JOIN:      'voice_join',
+	VOICE_LEAVE:     'voice_leave',
+	SCHEDULED:       'scheduled',
+	// Legacy aliases kept for backward compat
+	REACTION:        'reaction_add',
 });
 
 const BLOCK_CATEGORIES = Object.freeze({
@@ -60,12 +66,19 @@ const CONDITION_TYPES = Object.freeze({
 	VAR_LESS:         'var_less',
 	VAR_CONTAINS:     'var_contains',
 	VAR_IS_EMPTY:     'var_is_empty',
+	VAR_NOT_EMPTY:    'var_not_empty',
+	VAR_STARTS_WITH:  'var_starts_with',
+	VAR_ENDS_WITH:    'var_ends_with',
 	USER_HAS_PERM:    'user_has_perm',
 	USER_NOT_PERM:    'user_not_perm',
 	MESSAGE_CONTAINS: 'message_contains',
 	MENTIONED_USER:   'mentioned_user',
 	RANDOM_CHANCE:    'random_chance',
 	ARG_EQUALS:       'arg_equals',
+	USER_IS_BOT:      'user_is_bot',
+	USER_IS_HUMAN:    'user_is_human',
+	USER_EQUALS:      'user_equals',
+	NUMBER_BETWEEN:   'number_between',
 });
 
 const DISCORD_PERMISSIONS = Object.freeze([
@@ -102,13 +115,39 @@ const LIMITS = Object.freeze({
 
 // Must be a Set so validator can call .has()
 const BUILTIN_VARS = new Set([
-	'user', 'username', 'usertag', 'userid',
-	'server', 'guildid', 'membercount',
-	'channel', 'channelid',
-	'command_name', 'args',
+	// Author / executor
+	'user', 'username', 'displayname', 'userid', 'tag', 'avatar', 'executor',
+	// Server
+	'server', 'guild', 'serverid', 'guildid', 'membercount',
+	// Channel
+	'channel', 'channelname', 'channelid',
+	// Message
+	'message', 'command_name', 'args', 'trigger_value',
+	// Mentions
 	'mentioned', 'mentioned_id', 'mentioned_name',
-	'loop_index', 'loop_count',
-	'timestamp', 'date',
+	// Loop
+	'loop_index', 'loop_count', 'item', 'item_index',
+	// Date/time
+	'timestamp', 'date', 'time',
+	// Target user (set by member-action blocks)
+	'targetUser', 'targetuser', 'reason',
+	// Reaction trigger
+	'reaction_emoji', 'reaction_emoji_id', 'reactor', 'reactor_id', 'reactor_name',
+	'reacted_message',
+	// Member join/leave trigger
+	'new_member', 'new_member_id', 'new_member_name', 'new_member_avatar',
+	'account_age_days', 'account_created',
+	'left_member_name', 'left_member_id',
+	// Button / select / modal interaction vars
+	'button_id', 'button_user', 'button_user_id', 'button_user_name',
+	'selected_values', 'selected_count',
+	'modal_1', 'modal_2', 'modal_3', 'modal_4', 'modal_5',
+	// Voice state trigger
+	'voice_channel', 'voice_channel_id', 'voice_channel_name',
+	// Scheduled trigger
+	'scheduled_name', 'scheduled_time',
+	// Error handling
+	'_error_message',
 ]);
 
 const EXEC_STATUS = Object.freeze({

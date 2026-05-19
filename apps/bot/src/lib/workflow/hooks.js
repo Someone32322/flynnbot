@@ -95,6 +95,47 @@ async function onReactionAdd(reaction, user) {
 }
 
 /**
+ * Hook: Call from messageReactionRemove event
+ * @param {MessageReaction} reaction - Discord.js MessageReaction
+ * @param {User} user - Discord.js User
+ */
+async function onReactionRemove(reaction, user) {
+  if (!workflowHandler) return;
+  try {
+    await workflowHandler.handleReactionRemove(reaction, user);
+  } catch (err) {
+    console.error('[Workflows] Error in reactionRemove hook:', err);
+  }
+}
+
+/**
+ * Hook: Call from voiceStateUpdate event
+ * @param {VoiceState} oldState
+ * @param {VoiceState} newState
+ */
+async function onVoiceStateUpdate(oldState, newState) {
+  if (!workflowHandler) return;
+  try {
+    await workflowHandler.handleVoiceStateUpdate(oldState, newState);
+  } catch (err) {
+    console.error('[Workflows] Error in voiceStateUpdate hook:', err);
+  }
+}
+
+/**
+ * Hook: Call from scheduler tick for scheduled workflows
+ * @param {Client} client
+ */
+async function onScheduledTick(client) {
+  if (!workflowHandler) return;
+  try {
+    await workflowHandler.handleScheduledTick(client);
+  } catch (err) {
+    console.error('[Workflows] Error in scheduledTick hook:', err);
+  }
+}
+
+/**
  * Get the workflow handler instance
  * @returns {WorkflowHandler|null}
  */
@@ -128,6 +169,9 @@ module.exports = {
   onMemberJoin,
   onMemberLeave,
   onReactionAdd,
+  onReactionRemove,
+  onVoiceStateUpdate,
+  onScheduledTick,
   getWorkflowHandler,
   getWorkflowStats,
   destroyWorkflows,

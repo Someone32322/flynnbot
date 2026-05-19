@@ -182,7 +182,7 @@ class WorkflowHandler {
     try {
       const workflows = await Workflow.findByTrigger(
         reaction.message.guild.id,
-        'reaction'
+        'reaction_add'
       );
 
       for (const workflow of workflows) {
@@ -204,7 +204,9 @@ class WorkflowHandler {
           triggerMeta: {
             triggerType: 'reaction_add',
             emoji: reaction.emoji.name,
+            emojiId: reaction.emoji.id ?? reaction.emoji.name,
             userId: user.id,
+            userName: user.username,
           },
         });
       }
@@ -214,9 +216,113 @@ class WorkflowHandler {
     }
   }
 
-  // ── Private helper methods ──────────────────────────────────
+  /**
+   * Handle reaction remove events
+   * @param {MessageReaction} reaction - Discord.js MessageReaction object
+   * @param {User} user - Discord.js User object
+   */
+  async handleReactionRemove(reaction, user) {
+    if (!reaction.message.guild || user.bot) return;
 
-  _matchMessageTrigger(message, trigger) {
+    try {
+      const workflows = await Workflow.findByTrigger(
+        reaction.message.guild.id,
+        'reaction_remove'
+      );
+
+      for (const workflow of workflows) {
+        if (!workflow.enabled) continue;
+
+        if (workflow.trigger.value && reaction.emoji.name !== workflow.trigger.value) {
+          continue;
+        }
+
+        const member = await reaction.message.guild.members.fetch(user.id).catch(() => null);
+        if (!member) continue;
+
+        await this._executeWorkflow(workflow, {
+          guild: reaction.message.guild,
+          member,
+          channel: reaction.message.channel,
+          message: reaction.message,
+          triggerMeta: {
+            triggerType: 'reaction_remove',
+            emoji: reaction.emoji.name,
+            emojiId: reaction.emoji.id ?? reaction.emoji.name,
+            userId: user.id,
+            userName: user.username,
+          },
+        });
+      }
+    } catch (err) {
+      console.error('[WorkflowHandler] Error in handleReactionRemove:', err);
+      this.recordError(err);
+    }
+  }
+
+  /**
+   * Handle voice state changes (join / leave)
+   * @param {VoiceState} oldState
+   * @param {VoiceState} newState
+   */
+  async handleVoiceStateUpdate(oldState, newState) {
+    if (!newState.guild) return;
+    const member = newState.member || oldState.member;
+    if (!member || member.user.bot) return;
+
+    try {
+      const didJoin  = !oldState.channelId && newState.channelId;
+      const didLeave = oldState.channelId  && !newState.channelId;
+
+      if (didJoin) {
+        const workflows = await Workflow.findByTrigger(newState.guild.id, 'voice_join');
+        for (const workflow of workflows) {
+          if (!workflow.enabled) continue;
+          if (workflow.trigger.value && newState.channelId !== workflow.trigger.value) continue;
+
+          const channel = newState.channel ?? newState.guild.channels.cache.get(newState.channelId);
+          await this._executeWorkflow(workflow, {
+            guild:  newState.guild,
+            member,
+            channel: channel ?? this._resolveGuildDefaultChannel(newState.guild),
+            triggerMeta: {
+              triggerType:  'voice_join',
+              channelId:    newState.channelId,
+              channelName:  newState.channel?.name ?? '',
+            },
+          });
+        }
+      }
+
+      if (didLeave) {
+        const workflows = await Workflow.findByTrigger(oldState.guild.id, 'voice_leave');
+        for (const workflow of workflows) {
+          if (!workflow.enabled) continue;
+          if (workflow.trigger.value && oldState.channelId !== workflow.trigger.value) continue;
+
+          await this._executeWorkflow(workflow, {
+            guild:  oldState.guild,
+            member,
+            channel: this._resolveGuildDefaultChannel(oldState.guild),
+            triggerMeta: {
+              triggerType:  'voice_leave',
+              channelId:    oldState.channelId,
+              channelName:  oldState.channel?.name ?? '',
+            },
+          });
+        }
+      }
+    } catch (err) {
+      console.error('[WorkflowHandler] Error in handleVoiceStateUpdate:', err);
+      this.recordError(err);
+    }
+  }
+
+  /**
+   * Handle member join events
+   * @param {GuildMember} member - Discord.js GuildMember object
+   */
+  async handleMemberJoin(member) {
     const content = message.content.toLowerCase();
     const triggerValue = trigger.value?.toLowerCase() || '';
 
@@ -474,12 +580,68 @@ class WorkflowHandler {
   }
 
   /**
+   * Handle scheduled workflow execution (call from scheduler tick every ~60s).
+   * @param {Client} client - Discord.js Client
+   */
+  async handleScheduledTick(client) {
+    try {
+      const now = Date.now();
+      const workflows = await Workflow.find({ enabled: true, 'trigger.type': 'scheduled' }).lean();
+      for (const workflow of workflows) {
+        const intervalMs = _parseInterval(workflow.trigger?.value);
+        if (!intervalMs) continue;
+
+        const lastRan = workflow.metadata?.lastExecutedAt
+          ? new Date(workflow.metadata.lastExecutedAt).getTime()
+          : 0;
+        if (now - lastRan < intervalMs) continue;
+
+        const guild = client.guilds.cache.get(workflow.guildId);
+        if (!guild) continue;
+
+        const me = guild.members.me ?? await guild.members.fetchMe().catch(() => null);
+        if (!me) continue;
+
+        const channel = this._resolveGuildDefaultChannel(guild);
+        if (!channel) continue;
+
+        await this._executeWorkflow(workflow, {
+          guild,
+          member: me,
+          channel,
+          triggerMeta: {
+            triggerType:   'scheduled',
+            scheduledName: workflow.name,
+            scheduledAt:   now,
+          },
+        });
+      }
+    } catch (err) {
+      console.error('[WorkflowHandler] Error in handleScheduledTick:', err);
+    }
+  }
+
+  /**
    * Cleanup before shutdown
    */
   destroy() {
     if (this.engine) {
       this.engine.destroy?.();
     }
+  }
+}
+
+/** Parse interval strings like "5m", "1h", "12h", "1d" → milliseconds */
+function _parseInterval(str) {
+  if (!str || typeof str !== 'string') return null;
+  const m = str.trim().match(/^(\d+)\s*(m|h|d)$/i);
+  if (!m) return null;
+  const n = parseInt(m[1], 10);
+  switch (m[2].toLowerCase()) {
+    case 'm': return n * 60_000;
+    case 'h': return n * 3_600_000;
+    case 'd': return n * 86_400_000;
+    default:  return null;
   }
 }
 

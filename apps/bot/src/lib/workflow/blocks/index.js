@@ -160,6 +160,12 @@ async function evaluateCondition(data, ctx) {
       const val = v.resolve(`{${data.var_name}}`);
       return val === `{${data.var_name}}` || val === '' || val === undefined;
     }
+    case 'var_not_empty': {
+      const val2 = v.resolve(`{${data.var_name}}`);
+      return val2 !== `{${data.var_name}}` && val2 !== '' && val2 !== undefined;
+    }
+    case 'var_starts_with': return String(v.resolve(`{${data.var_name}}`)).startsWith(String(data.compare_value ?? ''));
+    case 'var_ends_with':   return String(v.resolve(`{${data.var_name}}`)).endsWith(String(data.compare_value ?? ''));
     case 'user_has_perm':    return ctx.member.permissions.has(data.permission);
     case 'user_not_perm':    return !ctx.member.permissions.has(data.permission);
     case 'message_contains': return ctx.message?.content?.toLowerCase()
@@ -169,6 +175,15 @@ async function evaluateCondition(data, ctx) {
     case 'arg_equals': {
       const arg0 = ctx.triggerMeta?.args?.[0] ?? '';
       return arg0 === String(data.compare_value ?? '');
+    }
+    case 'user_is_bot':   return ctx.user.bot === true;
+    case 'user_is_human': return ctx.user.bot !== true;
+    case 'user_equals':   return ctx.user.id === String(data.compare_value ?? '').replace(/[<@!>]/g, '');
+    case 'number_between': {
+      const n   = Number(v.resolve(`{${data.var_name}}`));
+      const lo  = Number(data.min_value ?? 0);
+      const hi  = Number(data.max_value ?? 100);
+      return n >= lo && n <= hi;
     }
     default: return false;
   }
@@ -822,6 +837,419 @@ EXECUTORS.delay = async (data, ctx) => {
 
 EXECUTORS.stop_flow = async (_data, ctx) => {
   ctx.stopped = true;
+};
+
+// ═══════════════════════════════════════════════════════════════
+// ADVANCED FLOW & LOGIC
+// ═══════════════════════════════════════════════════════════════
+
+EXECUTORS.run_workflow = async (data, ctx, engine) => {
+  const name = ctx.vars.resolve(data.workflow_name || '').trim();
+  if (!name) return;
+
+  // Prevent recursive cycles: max depth 3
+  const depth = (ctx.triggerMeta?._runWorkflowDepth ?? 0) + 1;
+  if (depth > 3) {
+    console.warn('[WorkflowEngine] run_workflow: max nesting depth 3 reached, skipping.');
+    return;
+  }
+
+  const Workflow = require('../../models/Workflow');
+  const target = await Workflow.findOne({ guildId: ctx.guildId, name, enabled: true }).lean().catch(() => null);
+  if (!target) return;
+
+  await engine.run(target, {
+    guild:       ctx.guild,
+    member:      ctx.member,
+    channel:     ctx.channel,
+    message:     ctx.message,
+    interaction: ctx.interaction,
+    triggerMeta: { ...ctx.triggerMeta, _runWorkflowDepth: depth },
+  });
+};
+
+EXECUTORS.try_catch = async (data, ctx, engine) => {
+  const prevStopped = ctx.stopped;
+  const prevErrored = ctx.errored;
+  ctx.stopped = false;
+  ctx.errored = false;
+  ctx.lastError = null;
+
+  try {
+    await engine._executeBlocks(data.try_blocks || [], ctx);
+  } catch (err) {
+    ctx.lastError = err.message || 'Unknown error';
+    ctx.vars.setFlow('_error_message', ctx.lastError);
+  }
+
+  if (ctx.errored || ctx.lastError) {
+    ctx.stopped = false;
+    ctx.errored = false;
+    await engine._executeBlocks(data.catch_blocks || [], ctx);
+  } else {
+    ctx.stopped = prevStopped;
+    ctx.errored = prevErrored;
+  }
+};
+
+EXECUTORS.condition_multi = async (data, ctx, engine) => {
+  const conditions = Array.isArray(data.conditions) ? data.conditions : [];
+  const operator   = data.operator === 'or' ? 'or' : 'and';
+
+  let passed;
+  if (operator === 'and') {
+    passed = true;
+    for (const cond of conditions) {
+      if (!(await evaluateCondition(cond, ctx))) { passed = false; break; }
+    }
+  } else {
+    passed = false;
+    for (const cond of conditions) {
+      if (await evaluateCondition(cond, ctx)) { passed = true; break; }
+    }
+  }
+
+  const nested = passed ? (data.if_blocks || []) : (data.else_blocks || []);
+  await engine._executeBlocks(nested, ctx);
+};
+
+EXECUTORS.for_each = async (data, ctx, engine) => {
+  const listVar = data.list_var;
+  if (!listVar) return;
+
+  const raw   = ctx.vars.resolve(`{${listVar}}`);
+  if (!raw || raw === `{${listVar}}`) return;
+
+  const items   = raw.split(',').map((s) => s.trim()).filter(Boolean);
+  const itemVar = data.item_var   || 'item';
+  const idxVar  = data.index_var  || 'item_index';
+  const maxIter = Math.min(items.length, 50);  // safety cap
+
+  ctx.pushLoop(maxIter);
+  for (let i = 0; i < maxIter; i++) {
+    if (ctx.stopped) break;
+    ctx.vars.setFlow(itemVar, items[i]);
+    ctx.vars.setFlow(idxVar,  i);
+    await engine._executeBlocks(data.loop_blocks || [], ctx);
+    ctx.advanceLoop();
+  }
+  ctx.popLoop();
+};
+
+// ═══════════════════════════════════════════════════════════════
+// LIST VARIABLE OPERATIONS
+// ═══════════════════════════════════════════════════════════════
+
+function _getList(ctx, listVar) {
+  const raw = String(ctx.vars.getFlow(listVar) ?? '');
+  return raw ? raw.split(',').map((s) => s.trim()).filter(Boolean) : [];
+}
+
+function _setList(ctx, listVar, items) {
+  ctx.vars.setFlow(listVar, items.join(', '));
+}
+
+EXECUTORS.list_push = async (data, ctx) => {
+  const listVar = data.list_var;
+  const value   = ctx.vars.resolve(data.value || '');
+  if (!listVar || value === '') return;
+
+  const items = _getList(ctx, listVar);
+  if (items.length >= 50) items.shift(); // rotate at cap
+  items.push(value);
+  _setList(ctx, listVar, items);
+};
+
+EXECUTORS.list_pop = async (data, ctx) => {
+  const listVar = data.list_var;
+  const storeAs = data.store_as || 'popped_item';
+  if (!listVar) return;
+
+  const items  = _getList(ctx, listVar);
+  const popped = items.pop() ?? '';
+  _setList(ctx, listVar, items);
+  ctx.vars.setFlow(storeAs, popped);
+};
+
+EXECUTORS.list_get = async (data, ctx) => {
+  const listVar = data.list_var;
+  const index   = Math.max(0, Number(data.index ?? 0));
+  const storeAs = data.store_as || 'list_item';
+  if (!listVar) return;
+
+  const items = _getList(ctx, listVar);
+  ctx.vars.setFlow(storeAs, items[index] ?? '');
+};
+
+EXECUTORS.list_length = async (data, ctx) => {
+  const listVar = data.list_var;
+  const storeAs = data.store_as || 'list_length';
+  if (!listVar) return;
+
+  ctx.vars.setFlow(storeAs, _getList(ctx, listVar).length);
+};
+
+EXECUTORS.list_join = async (data, ctx) => {
+  const listVar   = data.list_var;
+  const separator = data.separator != null ? String(data.separator) : ', ';
+  const storeAs   = data.store_as || 'joined_list';
+  if (!listVar) return;
+
+  ctx.vars.setFlow(storeAs, _getList(ctx, listVar).join(separator));
+};
+
+EXECUTORS.list_clear = async (data, ctx) => {
+  if (data.list_var) ctx.vars.setFlow(data.list_var, '');
+};
+
+EXECUTORS.list_contains = async (data, ctx) => {
+  const listVar = data.list_var;
+  const value   = ctx.vars.resolve(data.value || '');
+  const storeAs = data.store_as || 'list_has_item';
+  if (!listVar) return;
+
+  const found = _getList(ctx, listVar).includes(value);
+  ctx.vars.setFlow(storeAs, found ? 'true' : 'false');
+};
+
+// ═══════════════════════════════════════════════════════════════
+// HTTP / WEBHOOKS  (SSRF-safe — no private IPs, no filesystem)
+// ═══════════════════════════════════════════════════════════════
+
+function isSafeUrl(rawUrl) {
+  try {
+    const u = new URL(rawUrl);
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
+    const h = u.hostname.toLowerCase();
+    if (h === 'localhost' || h === '0.0.0.0' || h === '::1' || h === '[::1]') return false;
+    if (/^127\./.test(h) || /^10\./.test(h)) return false;
+    if (/^192\.168\./.test(h)) return false;
+    if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return false;
+    if (/^fd[0-9a-f]{2}:/.test(h) || h === 'metadata.google.internal') return false;
+    if (h === '169.254.169.254') return false;  // AWS/GCP metadata
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+EXECUTORS.fetch_api = async (data, ctx) => {
+  const url = ctx.vars.resolve(data.url || '').trim();
+  if (!url || !isSafeUrl(url)) {
+    if (data.store_status_as) ctx.vars.setFlow(data.store_status_as, '0');
+    return;
+  }
+
+  const method = (data.method || 'GET').toUpperCase();
+  if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return;
+
+  const headers = { 'Content-Type': 'application/json', 'User-Agent': 'FlynnBot/1.0' };
+  if (data.auth_header) {
+    // Only allow Authorization or X-Api-Key style headers
+    const authVal = ctx.vars.resolve(data.auth_header).slice(0, 256);
+    if (authVal) headers['Authorization'] = authVal;
+  }
+
+  const options = {
+    method,
+    headers,
+    signal: AbortSignal.timeout(8000),
+  };
+
+  if (['POST', 'PUT', 'PATCH'].includes(method) && data.body) {
+    options.body = ctx.vars.resolve(data.body).slice(0, 10_000);
+  }
+
+  try {
+    const res  = await fetch(url, options);
+    const text = (await res.text()).slice(0, 2000);
+
+    if (data.store_status_as) ctx.vars.setFlow(data.store_status_as, String(res.status));
+    if (data.store_body_as)   ctx.vars.setFlow(data.store_body_as, text);
+
+    // JSON field extraction: e.g. "data.user.name"
+    if (data.extract_path && data.store_extract_as) {
+      try {
+        const json = JSON.parse(text);
+        const parts = String(data.extract_path).split('.');
+        let val = json;
+        for (const p of parts) val = val?.[p];
+        ctx.vars.setFlow(data.store_extract_as, String(val ?? ''));
+      } catch { /* not JSON or path missing */ }
+    }
+  } catch (err) {
+    if (data.store_status_as) ctx.vars.setFlow(data.store_status_as, '0');
+    if (data.store_error_as)  ctx.vars.setFlow(data.store_error_as, err.message ?? 'Request failed');
+    if (data.on_error === 'stop') ctx.stopped = true;
+  }
+};
+
+EXECUTORS.send_webhook = async (data, ctx) => {
+  const url = ctx.vars.resolve(data.webhook_url || '').trim();
+  if (!url || !isSafeUrl(url)) return;
+  // Enforce discord webhook format for safety
+  if (!url.includes('discord.com/api/webhooks') && !data.allow_external) return;
+
+  const content    = ctx.vars.resolve(data.content || '').slice(0, 2000) || undefined;
+  const username   = ctx.vars.resolve(data.username || '').slice(0, 80)  || undefined;
+  const avatarUrl  = data.avatar_url ? ctx.vars.resolve(data.avatar_url) : undefined;
+
+  const payload = {};
+  if (content)  payload.content  = content;
+  if (username) payload.username = username;
+  if (avatarUrl && isSafeUrl(avatarUrl)) payload.avatar_url = avatarUrl;
+
+  if (data.embed_title || data.embed_description) {
+    payload.embeds = [{
+      title:       data.embed_title       ? ctx.vars.resolve(data.embed_title).slice(0, 256) : undefined,
+      description: data.embed_description ? ctx.vars.resolve(data.embed_description).slice(0, 4096) : undefined,
+      color:       data.embed_color ? parseInt(String(data.embed_color).replace('#', ''), 16) : 0x5865f2,
+    }];
+  }
+
+  if (!payload.content && !payload.embeds) return;
+
+  try {
+    await fetch(url, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'User-Agent': 'FlynnBot/1.0' },
+      body:    JSON.stringify(payload),
+      signal:  AbortSignal.timeout(8000),
+    });
+  } catch { /* ignore webhook failures */ }
+};
+
+// ═══════════════════════════════════════════════════════════════
+// MEMBER / USER UTILITIES
+// ═══════════════════════════════════════════════════════════════
+
+EXECUTORS.add_temp_role = async (data, ctx) => {
+  const member = data.target === 'mentioned'
+    ? ctx.message?.mentions?.members?.first() ?? ctx.member
+    : ctx.member;
+  if (!member || !data.role_id) return;
+
+  const durationMs = Math.min(Math.max(1, Number(data.duration_minutes ?? 10)), 10_080) * 60_000;
+  await member.roles.add(data.role_id).catch(() => {});
+
+  // Schedule removal (fire-and-forget; best-effort, survives process restarts only if TTL < uptime)
+  setTimeout(async () => {
+    try {
+      const fresh = await member.guild.members.fetch(member.id).catch(() => null);
+      if (fresh) await fresh.roles.remove(data.role_id).catch(() => {});
+    } catch { /* member may have left */ }
+  }, durationMs);
+};
+
+EXECUTORS.get_random_member = async (data, ctx) => {
+  const prefix = (data.var_prefix || 'random_member').replace(/[^a-z0-9_]/gi, '_');
+  try {
+    const all     = ctx.guild.members.cache.size < 50
+      ? (await ctx.guild.members.fetch().catch(() => ctx.guild.members.cache))
+      : ctx.guild.members.cache;
+    const humans  = all.filter((m) => !m.user.bot);
+    if (!humans.size) return;
+    const arr     = [...humans.values()];
+    const picked  = arr[Math.floor(Math.random() * arr.length)];
+    ctx.vars.setFlow(`${prefix}_id`,       picked.id);
+    ctx.vars.setFlow(`${prefix}_username`, picked.user.username);
+    ctx.vars.setFlow(`${prefix}_mention`,  `<@${picked.id}>`);
+    ctx.vars.setFlow(`${prefix}_nickname`, picked.displayName);
+  } catch { /* can't fetch members */ }
+};
+
+EXECUTORS.user_lookup = async (data, ctx) => {
+  const raw    = ctx.vars.resolve(data.user_id || '').replace(/[<@!>]/g, '').trim();
+  const prefix = (data.var_prefix || 'lookup').replace(/[^a-z0-9_]/gi, '_');
+  if (!raw) return;
+
+  try {
+    const member = await ctx.guild.members.fetch(raw).catch(() => null);
+    if (member) {
+      ctx.vars.setFlow(`${prefix}_id`,       member.id);
+      ctx.vars.setFlow(`${prefix}_username`, member.user.username);
+      ctx.vars.setFlow(`${prefix}_mention`,  `<@${member.id}>`);
+      ctx.vars.setFlow(`${prefix}_nickname`, member.displayName);
+      ctx.vars.setFlow(`${prefix}_joined`,   member.joinedAt?.toISOString() ?? '');
+      ctx.vars.setFlow(`${prefix}_roles`,    [...member.roles.cache.values()].map((r) => r.name).join(', '));
+      ctx.vars.setFlow(`${prefix}_avatar`,   member.user.displayAvatarURL({ size: 256 }));
+      ctx.vars.setFlow(`${prefix}_found`,    'true');
+    } else {
+      ctx.vars.setFlow(`${prefix}_found`, 'false');
+    }
+  } catch {
+    ctx.vars.setFlow(`${prefix}_found`, 'false');
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════
+// CHANNEL / ROLE CREATION
+// ═══════════════════════════════════════════════════════════════
+
+EXECUTORS.create_role = async (data, ctx) => {
+  const name   = ctx.vars.resolve(data.name || 'New Role').slice(0, 100);
+  const color  = data.color || '#000000';
+  const reason = ctx.vars.resolve(data.reason || '') || undefined;
+  const hoist  = !!data.hoist;
+
+  try {
+    const role = await ctx.guild.roles.create({ name, color, hoist, reason }).catch(() => null);
+    if (role && data.store_id_as) ctx.vars.setFlow(data.store_id_as, role.id);
+  } catch { /* insufficient permissions */ }
+};
+
+EXECUTORS.delete_role = async (data, ctx) => {
+  const roleId = ctx.vars.resolve(data.role_id || '');
+  if (!roleId) return;
+  const reason = ctx.vars.resolve(data.reason || '') || undefined;
+  try {
+    const role = await ctx.guild.roles.fetch(roleId).catch(() => null);
+    if (role) await role.delete(reason).catch(() => {});
+  } catch { /* insufficient permissions */ }
+};
+
+// ═══════════════════════════════════════════════════════════════
+// MESSAGE TEMPLATES (use stored embed templates)
+// ═══════════════════════════════════════════════════════════════
+
+EXECUTORS.use_template = async (data, ctx) => {
+  const name = ctx.vars.resolve(data.template_name || '').trim();
+  if (!name) return;
+
+  // Import lazily to avoid circular dependencies
+  const EmbedTemplate = (() => {
+    try { return require('../../models/EmbedTemplate'); } catch { return null; }
+  })();
+
+  if (!EmbedTemplate) return;
+
+  const tmpl = await EmbedTemplate.findOne({ guildId: ctx.guildId, name }).lean().catch(() => null);
+  if (!tmpl) return;
+
+  const { EmbedBuilder } = require('discord.js');
+  const embed = new EmbedBuilder();
+  const r = (s) => s ? ctx.vars.resolve(String(s)) : '';
+
+  if (tmpl.title)       embed.setTitle(r(tmpl.title).slice(0, 256));
+  if (tmpl.description) embed.setDescription(r(tmpl.description).slice(0, 4096));
+  if (tmpl.color)       embed.setColor(tmpl.color);
+  if (tmpl.footer?.text) embed.setFooter({ text: r(tmpl.footer.text).slice(0, 2048) });
+  if (tmpl.image?.url)  embed.setImage(r(tmpl.image.url));
+  if (tmpl.thumbnail?.url) embed.setThumbnail(r(tmpl.thumbnail.url));
+  if (tmpl.url)         embed.setURL(r(tmpl.url));
+  if (Array.isArray(tmpl.fields)) {
+    for (const field of tmpl.fields.slice(0, 25)) {
+      embed.addFields({ name: r(field.name || '\u200b'), value: r(field.value || '\u200b'), inline: !!field.inline });
+    }
+  }
+
+  const target = data.channel_id
+    ? await ctx.guild.channels.fetch(data.channel_id).catch(() => null)
+    : ctx.channel;
+  if (!target) return;
+
+  const msg = await sendToTarget(ctx, { embeds: [embed] }, data.channel_id || null);
+  if (msg && data.store_id_as) ctx.vars.setFlow(data.store_id_as, msg.id);
 };
 
 module.exports = EXECUTORS;

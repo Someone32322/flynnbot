@@ -53,6 +53,9 @@ class ExecutionContext {
     /** Set to true if a fatal block error occurred */
     this.errored     = false;
 
+    /** Last error message caught by try_catch block */
+    this.lastError   = null;
+
     /** Loop context stack: [{ index, count }] */
     this.loopStack   = [];
   }
