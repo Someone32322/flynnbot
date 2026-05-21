@@ -5,6 +5,7 @@ const { setupLogging } = require("../lib/logging");
 const { startHealthReporter } = require("../lib/health");
 const inviteTracker = require("../lib/inviteTracker");
 const { initializeWorkflows } = require("../lib/workflow/hooks");
+const { initCustomCommands } = require("../lib/customCommands");
 
 module.exports = {
   name: "clientReady",
@@ -14,6 +15,9 @@ module.exports = {
 
     // ── Initialize workflow system ─────────────────────────────
     initializeWorkflows(client);
+
+    // ── Initialize custom commands engine ─────────────────────
+    initCustomCommands(client);
 
     startScheduler(client);
     setupLogging(client);

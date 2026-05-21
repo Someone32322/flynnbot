@@ -7,7 +7,7 @@ const { createTicket, closeTicket, claimTicket } = require("../lib/tickets");
 const { handleGiveawayButton } = require("../lib/giveaways");
 const { handlePollButton } = require("../lib/polls");
 const { onInteractionCreate: handleWorkflowInteractions } = require("../lib/workflow/hooks");
-const { handleCustomSlashInteraction } = require("../lib/customCommands");
+const { handleCustomSlashInteraction, handleCustomComponentInteraction } = require("../lib/customCommands");
 
 // Commands exempt from per-guild settings checks (always accessible)
 const GLOBAL_COMMANDS = new Set(['help']);
@@ -122,6 +122,15 @@ module.exports = {
     if (interaction.isStringSelectMenu() && interaction.customId.startsWith("msg:sel:")) {
       await handleMsgSelect(interaction);
       return;
+    }
+
+    // ── Custom Command components (button / select_menu triggers) ─
+    if (interaction.isButton() || interaction.isStringSelectMenu()) {
+      const handled = await handleCustomComponentInteraction(interaction).catch((err) => {
+        console.error('[CustomCommands] component interaction error:', err);
+        return false;
+      });
+      if (handled) return;
     }
 
     if (interaction.isAutocomplete()) {

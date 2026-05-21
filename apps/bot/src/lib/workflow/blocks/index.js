@@ -1253,3 +1253,139 @@ EXECUTORS.use_template = async (data, ctx) => {
 };
 
 module.exports = EXECUTORS;
+
+// ═══════════════════════════════════════════════════════════════
+// ECONOMY BLOCKS
+// ═══════════════════════════════════════════════════════════════
+
+EXECUTORS.give_coins = async (data, ctx) => {
+  const amount = Math.max(0, Math.min(1_000_000, parseInt(data.amount) || 0));
+  if (!amount) return;
+  const field = data.location === 'bank' ? 'bank' : 'wallet';
+  try {
+    const EconomyProfile = require('../../models/EconomyProfile');
+    await EconomyProfile.findOneAndUpdate(
+      { guildId: ctx.guildId, userId: ctx.user.id },
+      { $inc: { [field]: amount, coins: field === 'wallet' ? amount : 0 } },
+      { upsert: true }
+    );
+  } catch { /* economy module may not be present */ }
+};
+
+EXECUTORS.take_coins = async (data, ctx) => {
+  const amount = Math.max(0, Math.min(1_000_000, parseInt(data.amount) || 0));
+  if (!amount) return;
+  const field = data.location === 'bank' ? 'bank' : 'wallet';
+  try {
+    const EconomyProfile = require('../../models/EconomyProfile');
+    await EconomyProfile.findOneAndUpdate(
+      { guildId: ctx.guildId, userId: ctx.user.id },
+      { $inc: { [field]: -amount, coins: field === 'wallet' ? -amount : 0 } },
+      { upsert: true }
+    );
+  } catch { /* economy module may not be present */ }
+};
+
+EXECUTORS.set_coins = EXECUTORS.set_balance = async (data, ctx) => {
+  const amount = Math.max(0, Math.min(1_000_000, parseInt(data.amount) || 0));
+  const field  = data.location === 'bank' ? 'bank' : 'wallet';
+  try {
+    const EconomyProfile = require('../../models/EconomyProfile');
+    await EconomyProfile.findOneAndUpdate(
+      { guildId: ctx.guildId, userId: ctx.user.id },
+      { $set: { [field]: amount, ...(field === 'wallet' ? { coins: amount } : {}) } },
+      { upsert: true }
+    );
+  } catch { /* economy module may not be present */ }
+};
+
+EXECUTORS.check_balance = EXECUTORS.check_coins = async (data, ctx) => {
+  try {
+    const EconomyProfile = require('../../models/EconomyProfile');
+    const prof = await EconomyProfile.findOne({ guildId: ctx.guildId, userId: ctx.user.id }).lean();
+    const walletVar = String(data.var_wallet || 'wallet').replace(/[^a-z0-9_]/gi, '').slice(0, 32) || 'wallet';
+    const bankVar   = String(data.var_bank   || 'bank').replace(/[^a-z0-9_]/gi, '').slice(0, 32)   || 'bank';
+    ctx.vars.setFlow(walletVar, String(prof?.wallet ?? prof?.coins ?? 0));
+    ctx.vars.setFlow(bankVar,   String(prof?.bank ?? 0));
+    // Legacy: store_as puts coins in one var
+    if (data.store_as) ctx.vars.setFlow(data.store_as, String(prof?.coins ?? prof?.wallet ?? 0));
+  } catch { /* economy module may not be present */ }
+};
+
+EXECUTORS.give_item = async (data, ctx) => {
+  const itemId   = String(data.item_id   || '').slice(0, 64);
+  const itemName = String(data.item_name || '').slice(0, 64);
+  if (!itemId || !itemName) return;
+  try {
+    const Inventory = require('../../models/Inventory');
+    await Inventory.findOneAndUpdate(
+      { guildId: ctx.guildId, userId: ctx.user.id, itemId },
+      { $inc: { quantity: Math.max(1, parseInt(data.quantity) || 1) }, $set: { itemName, emoji: data.emoji || '📦' } },
+      { upsert: true }
+    );
+  } catch { /* inventory module may not be present */ }
+};
+
+// ═══════════════════════════════════════════════════════════════
+// LEVELING BLOCKS
+// ═══════════════════════════════════════════════════════════════
+
+EXECUTORS.give_xp = async (data, ctx) => {
+  const amount = Math.max(0, Math.min(100_000, parseInt(data.amount) || 0));
+  if (!amount) return;
+  try {
+    const LevelProfile = require('../../models/LevelProfile');
+    await LevelProfile.findOneAndUpdate(
+      { guildId: ctx.guildId, userId: ctx.user.id },
+      { $inc: { xp: amount } },
+      { upsert: true }
+    );
+  } catch { /* leveling module may not be present */ }
+};
+
+EXECUTORS.take_xp = async (data, ctx) => {
+  const amount = Math.max(0, Math.min(100_000, parseInt(data.amount) || 0));
+  if (!amount) return;
+  try {
+    const LevelProfile = require('../../models/LevelProfile');
+    await LevelProfile.findOneAndUpdate(
+      { guildId: ctx.guildId, userId: ctx.user.id },
+      { $inc: { xp: -amount } },
+      { upsert: true }
+    );
+  } catch { /* leveling module may not be present */ }
+};
+
+EXECUTORS.get_level = EXECUTORS.check_level = EXECUTORS.check_xp = async (data, ctx) => {
+  try {
+    const LevelProfile = require('../../models/LevelProfile');
+    const prof = await LevelProfile.findOne({ guildId: ctx.guildId, userId: ctx.user.id }).lean();
+    const lvlVar = String(data.var_level || 'level').replace(/[^a-z0-9_]/gi, '').slice(0, 32) || 'level';
+    const xpVar  = String(data.var_xp   || 'xp').replace(/[^a-z0-9_]/gi, '').slice(0, 32)   || 'xp';
+    ctx.vars.setFlow(lvlVar, String(prof?.level ?? 0));
+    ctx.vars.setFlow(xpVar,  String(prof?.xp ?? 0));
+    // Legacy: store_as
+    if (data.store_as) ctx.vars.setFlow(data.store_as, String(prof?.level ?? prof?.xp ?? 0));
+  } catch { /* leveling module may not be present */ }
+};
+
+// ═══════════════════════════════════════════════════════════════
+// BACKWARD-COMPAT ALIASES  (old CC block type names → new names)
+// ═══════════════════════════════════════════════════════════════
+
+// Old name → new executor
+EXECUTORS.ban_user        = EXECUTORS.ban_member;
+EXECUTORS.kick_user       = EXECUTORS.kick_member;
+EXECUTORS.timeout_user    = EXECUTORS.timeout_member;
+EXECUTORS.mute_user       = EXECUTORS.timeout_member;  // legacy: mute = timeout
+EXECUTORS.unmute_user     = EXECUTORS.remove_timeout;
+EXECUTORS.warn_user       = EXECUTORS.warn_member;
+EXECUTORS.react           = EXECUTORS.add_reaction;
+EXECUTORS.dm              = EXECUTORS.dm_user;
+EXECUTORS.embed           = EXECUTORS.send_embed;
+EXECUTORS.message         = EXECUTORS.send_message;
+EXECUTORS.fetch_user_info = EXECUTORS.get_member_info; // closest equivalent
+EXECUTORS.wait            = EXECUTORS.delay;
+
+// re-export with aliases resolved
+module.exports = EXECUTORS;
