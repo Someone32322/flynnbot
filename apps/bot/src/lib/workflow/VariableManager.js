@@ -109,6 +109,27 @@ class VariableManager {
       return named[key];
     }
 
+    // Slash command option lookup: {option.optionName}
+    if (key.startsWith('option.')) {
+      const optName = key.slice(7);
+      const optionsArr = ctx.triggerMeta?.options;
+      if (Array.isArray(optionsArr)) {
+        const opt = optionsArr.find((o) => o.name === optName);
+        if (opt !== undefined) {
+          const v = opt.value;
+          return v !== undefined && v !== null ? String(v) : '';
+        }
+      }
+      // Also try reading directly from the Discord interaction if available
+      if (ctx.interaction?.options) {
+        try {
+          const val = ctx.interaction.options.get(optName, false);
+          if (val !== null) return String(val.value ?? '');
+        } catch { /* option not present */ }
+      }
+      return '';
+    }
+
     // Loop variables (highest priority)
     if (key === 'loop_index' && ctx.currentLoop) return ctx.currentLoop.index;
     if (key === 'loop_count' && ctx.currentLoop) return ctx.currentLoop.count;
