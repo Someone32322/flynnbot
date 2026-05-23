@@ -75,11 +75,12 @@ const customCommandSchema = new mongoose.Schema({
   // ── Slash command options ───────────────────────────────────
   slashOptions: {
     type: [{
-      name:        { type: String, required: true, maxlength: 32 },
-      type:        { type: Number, default: 3 }, // 3=STRING
-      description: { type: String, default: '', maxlength: 100 },
-      required:    { type: Boolean, default: false },
-      choices:     { type: mongoose.Schema.Types.Mixed, default: [] },
+      name:         { type: String, required: true, maxlength: 32 },
+      type:         { type: Number, default: 3 }, // 3=STRING
+      description:  { type: String, default: '', maxlength: 100 },
+      required:     { type: Boolean, default: false },
+      autocomplete: { type: Boolean, default: false },
+      choices:      { type: mongoose.Schema.Types.Mixed, default: [] },
     }],
     default: [],
   },

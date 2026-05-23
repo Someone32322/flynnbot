@@ -16,12 +16,12 @@ const WorkflowEngine   = require('./workflow/WorkflowEngine');
 const ExecutionContext = require('./workflow/ExecutionContext');
 const VariableManager  = require('./workflow/VariableManager');
 
-// Per-guild command cache (30s TTL)
+// Per-guild command cache (5s TTL — short enough to pick up dashboard saves quickly)
 const cmdCache = new Map();
 
 async function getGuildCommands(guildId) {
   const cached = cmdCache.get(guildId);
-  if (cached && Date.now() - cached.ts < 30_000) return cached.cmds;
+  if (cached && Date.now() - cached.ts < 5_000) return cached.cmds;
   const cmds = await CustomCommand.find({ guildId, enabled: true }).lean().catch(() => []);
   cmdCache.set(guildId, { cmds, ts: Date.now() });
   return cmds;
