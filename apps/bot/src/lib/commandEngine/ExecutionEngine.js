@@ -2,9 +2,9 @@
 
 const { BlockRegistry }    = require('./BlockRegistry');
 const { ExecutionContext }  = require('./ExecutionContext');
-const { GuildCommand }      = require('../../models/GuildCommand');
-const StoredVariable        = require('../../models/StoredVariable');
-const StoredVariableValue   = require('../../models/StoredVariableValue');
+const { GuildCommand }        = require('../../models/GuildCommand');
+const { StoredVariable }      = require('../../models/StoredVariable');
+const { StoredVariableValue } = require('../../models/StoredVariableValue');
 const { MessageFlags }      = require('discord.js');
 
 // ─────────────────────────────────────────────

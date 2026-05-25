@@ -144,6 +144,8 @@ module.exports = {
         return false;
       });
       if (handled) return;
+      // If the engine deferred but then failed, the interaction is already acknowledged
+      if (interaction.deferred || interaction.replied) return;
 
       await interaction.reply({
         content: "This command is not available.",

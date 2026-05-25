@@ -74,6 +74,11 @@ async function onInteraction(interaction) {
     }
   } catch (err) {
     console.error('[CommandEngine] onInteraction error:', err);
+    // If the interaction was already deferred, send an error reply so Discord doesn't get stuck
+    if (interaction.deferred || interaction.replied) {
+      interaction.editReply({ content: '❌ An internal error occurred while running this command.' }).catch(() => null);
+    }
+    return true; // Mark as handled so interactionCreate.js doesn't also try to reply
   }
   return false;
 }
