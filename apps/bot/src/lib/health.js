@@ -12,6 +12,7 @@
  */
 
 const { BotStatus } = require('../models/BotStatus');
+const { StatusLog } = require('../models/StatusLog');
 const { sendStatusWebhook } = require('./statusWebhook');
 
 const INTERVAL_MS = 30_000;       // Report every 30 s
@@ -66,6 +67,14 @@ async function report(client) {
     // Announce online once per process start
     if (!hasAnnouncedOnline) {
       hasAnnouncedOnline = true;
+      
+      await StatusLog.create({
+        service: 'bot',
+        type: 'online',
+        message: 'FlynnBot has connected to Discord and is fully operational.',
+        details: { latencyMs, memoryMB: memMB, guildCount }
+      });
+      
       await sendStatusWebhook({
         type: 'online',
         title: '✅ FlynnBot — Online',
@@ -76,6 +85,14 @@ async function report(client) {
     // Announce latency spike
     if (isHighLatency && !wasHighLatency) {
       wasHighLatency = true;
+      
+      await StatusLog.create({
+        service: 'bot',
+        type: 'degraded',
+        message: `FlynnBot is currently experiencing higher than normal latency (${latencyMs} ms).`,
+        details: { latencyMs, memoryMB: memMB }
+      });
+
       await sendStatusWebhook({
         type: 'degraded',
         title: '⚠️ FlynnBot — Elevated Latency',
@@ -86,6 +103,14 @@ async function report(client) {
     // Announce recovery from latency spike
     if (!isHighLatency && wasHighLatency) {
       wasHighLatency = false;
+      
+      await StatusLog.create({
+        service: 'bot',
+        type: 'online',
+        message: `FlynnBot latency has returned to normal (${latencyMs} ms).`,
+        details: { latencyMs, memoryMB: memMB }
+      });
+
       await sendStatusWebhook({
         type: 'online',
         title: '✅ FlynnBot — Latency Recovered',
@@ -112,6 +137,13 @@ async function reportOffline(reason = 'Bot has gone offline.') {
       },
       { upsert: true }
     );
+
+    await StatusLog.create({
+      service: 'bot',
+      type: 'offline',
+      message: reason,
+      details: {}
+    });
 
     await sendStatusWebhook({
       type: 'offline',

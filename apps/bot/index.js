@@ -120,9 +120,19 @@ try {
 
 const { sendStatusWebhook } = require("./src/lib/statusWebhook");
 const { stopHealthReporter, reportOffline } = require("./src/lib/health");
+const { StatusLog } = require("./src/models/StatusLog");
 
 process.on("uncaughtException", async (err) => {
   console.error("[Bot] uncaughtException:", err);
+  try {
+    await StatusLog.create({
+      service: 'bot',
+      type: 'error',
+      message: 'Uncaught Exception',
+      details: { stack: err.stack, name: err.name, message: err.message }
+    });
+  } catch(e) {}
+  
   await reportOffline(`FlynnBot encountered a critical error and has gone offline.`).catch(() => {});
   await sendStatusWebhook({
     type: 'offline',
