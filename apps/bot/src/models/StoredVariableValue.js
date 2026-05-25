@@ -60,8 +60,6 @@ const StoredVariableValueSchema = new mongoose.Schema({
 
 // Primary lookup: find a user's value for a specific variable
 StoredVariableValueSchema.index({ definitionId: 1, userId: 1 });
-// Guild-scoped lookup
-StoredVariableValueSchema.index({ definitionId: 1, scope: 1 });
 // Bulk load: all values for a user in a guild
 StoredVariableValueSchema.index({ guildId: 1, scope: 1, userId: 1 });
 // Command-scoped cleanup
