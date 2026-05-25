@@ -1,7 +1,7 @@
 const { ReactionRole } = require("../models/ReactionRole");
 const { ScheduledMessage } = require("../models/ScheduledMessage");
 const starboard = require("../lib/starboard");
-const { onReactionAdd: handleWorkflowReaction } = require("../lib/workflow/hooks");
+const commandEngine = require("../lib/commandEngine/hooks");
 
 module.exports = {
   name: "messageReactionAdd",
@@ -19,9 +19,9 @@ module.exports = {
     const guildId = reaction.message.guildId;
     if (!guildId) return;
 
-    // ── Workflow reaction_add triggers ─────────────────────────
-    handleWorkflowReaction(reaction, user).catch((err) => {
-      console.error('[Workflows] Error handling reaction:', err);
+    // ── Command Engine: reaction_add triggers ──────────────────
+    commandEngine.onReactionAdd(reaction, user).catch((err) => {
+      console.error('[CommandEngine] reaction add error:', err);
     });
 
     // ── Reaction Role (emoji type) ─────────────────────────────

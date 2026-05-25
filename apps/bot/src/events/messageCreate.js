@@ -3,11 +3,10 @@ const { GuildConfig } = require('../models/GuildConfig');
 const { handleStickyForChannel, handleCommandTrigger } = require('../lib/scheduler');
 const { maybeAwardXpForMessage } = require('../lib/leveling');
 const { handleAIMessage } = require('../lib/ai');
-const { handleCustomCommands } = require('../lib/customCommands');
+const commandEngine = require('../lib/commandEngine/hooks');
 const { handleAutoMod } = require('../lib/automod');
 const { handleMessage: handleAFKMessage } = require('../lib/afk');
 const { handleAutoSlowmode } = require('../lib/slowmode');
-const { onMessageCreate: handleWorkflowTriggers } = require('../lib/workflow/hooks');
 const COMMAND_META = require('../commands/meta');
 
 // Maps discord.js option type numbers to their names
@@ -167,10 +166,10 @@ module.exports = {
   async execute(message) {
     if (message.author.bot || !message.guild) return;
 
-    // ── Workflow Triggers (message-based) ──────────────────────
-    // Check workflows first (prefix_command, contains, regex, exact_match)
-    handleWorkflowTriggers(message).catch((err) => {
-      console.error('[Workflows] Error handling message triggers:', err);
+    // ── Command Engine: text-based triggers ────────────────────
+    // Handles prefix, contains, exact, startsWith, regex commands
+    commandEngine.onMessage(message).catch((err) => {
+      console.error('[CommandEngine] message trigger error:', err);
     });
 
     // ── AutoMod (bot-side rules) ───────────────────────────────
@@ -189,8 +188,7 @@ module.exports = {
       console.error(`[AI] unhandled messageCreate error guild=${message.guild?.id || 'n/a'} channel=${message.channelId || 'n/a'}`, err?.message || err);
     });
 
-    // ── Custom Commands ────────────────────────────────────────
-    handleCustomCommands(message).catch(() => {});
+
 
     // ── AFK System ─────────────────────────────────────────────
     handleAFKMessage(message).catch(() => {});

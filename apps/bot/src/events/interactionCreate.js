@@ -6,8 +6,7 @@ const { handlePaginationButton } = require("../lib/pagination");
 const { createTicket, closeTicket, claimTicket } = require("../lib/tickets");
 const { handleGiveawayButton } = require("../lib/giveaways");
 const { handlePollButton } = require("../lib/polls");
-const { onInteractionCreate: handleWorkflowInteractions } = require("../lib/workflow/hooks");
-const { handleCustomSlashInteraction, handleCustomComponentInteraction } = require("../lib/customCommands");
+const commandEngine = require("../lib/commandEngine/hooks");
 
 // Commands exempt from per-guild settings checks (always accessible)
 const GLOBAL_COMMANDS = new Set(['help']);
@@ -30,26 +29,22 @@ function normalizeDeferredPayload(payload) {
 module.exports = {
   name: "interactionCreate",
   async execute(interaction) {
-    // ── Workflow interactions ────────────────────────────────────
-    // Check for workflow-generated components (buttons, select menus, modals)
-    // This must come before system-level handlers to prevent routing conflicts
-    if (interaction.isButton() && interaction.customId?.startsWith("wf:")) {
-      await handleWorkflowInteractions(interaction).catch((err) => {
-        console.error("[Workflows] Error handling button interaction:", err);
+    // ── Command Engine: component interactions (button / select / modal) ─
+    // Must come before system-level handlers to avoid routing conflicts.
+    // handleComponent / handleModal return false if no guild command matches.
+    if (interaction.isButton() || interaction.isStringSelectMenu()) {
+      const handled = await commandEngine.onInteraction(interaction).catch((err) => {
+        console.error('[CommandEngine] component interaction error:', err);
+        return false;
       });
-      return;
+      if (handled) return;
     }
-    if (interaction.isStringSelectMenu() && interaction.customId?.startsWith("wf:")) {
-      await handleWorkflowInteractions(interaction).catch((err) => {
-        console.error("[Workflows] Error handling select menu:", err);
+    if (interaction.isModalSubmit()) {
+      const handled = await commandEngine.onInteraction(interaction).catch((err) => {
+        console.error('[CommandEngine] modal interaction error:', err);
+        return false;
       });
-      return;
-    }
-    if (interaction.isModalSubmit() && interaction.customId?.startsWith("wf:")) {
-      await handleWorkflowInteractions(interaction).catch((err) => {
-        console.error("[Workflows] Error handling modal:", err);
-      });
-      return;
+      if (handled) return;
     }
     // Slash commands are handled later in the existing routing
 
@@ -124,15 +119,6 @@ module.exports = {
       return;
     }
 
-    // ── Custom Command components (button / select_menu triggers) ─
-    if (interaction.isButton() || interaction.isStringSelectMenu()) {
-      const handled = await handleCustomComponentInteraction(interaction).catch((err) => {
-        console.error('[CustomCommands] component interaction error:', err);
-        return false;
-      });
-      if (handled) return;
-    }
-
     if (interaction.isAutocomplete()) {
       const command = interaction.client.commands.get(interaction.commandName);
       if (command?.autocomplete) {
@@ -152,11 +138,12 @@ module.exports = {
     const command = interaction.client.commands.get(interaction.commandName);
 
     if (!command) {
-      const handledCustomSlash = await handleCustomSlashInteraction(interaction).catch((err) => {
-        console.error("[CustomCommands] slash interaction error:", err);
+      // ── Command Engine: slash command fallback ────────────────────
+      const handled = await commandEngine.onInteraction(interaction).catch((err) => {
+        console.error('[CommandEngine] slash interaction error:', err);
         return false;
       });
-      if (handledCustomSlash) return;
+      if (handled) return;
 
       await interaction.reply({
         content: "This command is not available.",

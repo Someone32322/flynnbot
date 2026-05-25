@@ -1,14 +1,14 @@
 const { handleMemberLeave } = require("../lib/welcome");
 const { trackEvent } = require("../lib/analytics");
 const inviteTracker = require("../lib/inviteTracker");
-const { onMemberLeave: handleWorkflowMemberLeave } = require("../lib/workflow/hooks");
+const commandEngine = require("../lib/commandEngine/hooks");
 
 module.exports = {
   name: "guildMemberRemove",
   async execute(member) {
-    // ── Workflow member_leave triggers ─────────────────────────
-    handleWorkflowMemberLeave(member).catch((err) => {
-      console.error('[Workflows] Error handling member leave:', err);
+    // ── Command Engine: member_leave triggers ──────────────────
+    commandEngine.onMemberLeave(member).catch((err) => {
+      console.error('[CommandEngine] member leave error:', err);
     });
 
     handleMemberLeave(member).catch((err) => {

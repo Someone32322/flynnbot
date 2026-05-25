@@ -4,8 +4,7 @@ const { startScheduler } = require("../lib/scheduler");
 const { setupLogging } = require("../lib/logging");
 const { startHealthReporter } = require("../lib/health");
 const inviteTracker = require("../lib/inviteTracker");
-const { initializeWorkflows } = require("../lib/workflow/hooks");
-const { initCustomCommands } = require("../lib/customCommands");
+const commandEngine = require("../lib/commandEngine/hooks");
 
 module.exports = {
   name: "clientReady",
@@ -13,11 +12,8 @@ module.exports = {
   execute(client) {
     console.log(`Ready event fired for ${client.user.tag}`);
 
-    // ── Initialize workflow system ─────────────────────────────
-    initializeWorkflows(client);
-
-    // ── Initialize custom commands engine ─────────────────────
-    initCustomCommands(client);
+    // ── Initialize command engine ───────────────────────────
+    commandEngine.init(client);
 
     startScheduler(client);
     setupLogging(client);
