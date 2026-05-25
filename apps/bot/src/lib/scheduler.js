@@ -12,7 +12,7 @@ const { sendTestWelcomeMessage } = require("./welcome");
 const { checkGiveaways } = require("./giveaways");
 const { checkPolls } = require("./polls");
 const { updateAllGuilds: updateStatsChannels } = require("./stats");
-const { onScheduledTick } = require("./workflow/hooks");
+const { onScheduledTick } = require('./commandEngine/hooks');
 
 async function processTimedAction(client, actionDocument) {
   const guild = client.guilds.cache.get(actionDocument.guildId) || (await client.guilds.fetch(actionDocument.guildId).catch(() => null));
