@@ -58,7 +58,7 @@ class ExecutionContext {
 
     // Shortcuts
     this.guildId = guild?.id ?? null;
-    this.userId  = userId || member?.id ?? null;
+    this.userId  = userId ?? member?.id ?? null;
 
     // Variable manager — Phase 2 interface with storedDefs/storedValues
     this.vars = new VariableManager({
