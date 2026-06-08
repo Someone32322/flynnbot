@@ -84,12 +84,21 @@ async function handleAIMessage(message) {
 
   await message.channel.sendTyping().catch(() => {});
 
+  // Map deprecated Groq model names to current supported ones
+  const MODEL_MIGRATION = {
+    'llama3-8b-8192':    'llama-3.1-8b-instant',
+    'llama3-70b-8192':   'llama-3.3-70b-versatile',
+    'mixtral-8x7b-32768':'mixtral-8x7b-32768', // still active
+  };
+  const rawModel = cfg.model || 'llama-3.1-8b-instant';
+  const model = MODEL_MIGRATION[rawModel] || rawModel;
+
   try {
-    console.info(`[AI] request:start guild=${message.guild.id} channel=${message.channelId} model=${cfg.model || 'llama-3.1-8b-instant'} promptChars=${Math.min(userText.length, 4000)}`);
+    console.info(`[AI] request:start guild=${message.guild.id} channel=${message.channelId} model=${model} promptChars=${Math.min(userText.length, 4000)}`);
     const groq = new Groq({ apiKey });
 
     const completion = await groq.chat.completions.create({
-      model: cfg.model || 'llama-3.1-8b-instant',
+      model,
       messages: [
         { role: 'system', content: cfg.systemPrompt || 'You are a helpful Discord bot assistant. Be concise, friendly, and accurate.' },
         { role: 'user', content: userText.slice(0, 4000) },
