@@ -14,6 +14,7 @@ const {
   LevelProfile,
   normalizeFormula,
   applyLevelRewards,
+  SAPPHIRE,
 } = require("../../lib/leveling");
 
 function hasManageGuild(interaction) {
@@ -71,4 +72,5 @@ module.exports = {
   applyLevelRewards,
   formatConfig,
   getProfileAndComputed,
+  SAPPHIRE,
 };

@@ -27,6 +27,8 @@ const levelConfigSchema = new mongoose.Schema(
       b: { type: Number, default: 50 },
       c: { type: Number, default: 100 },
     },
+    rankBackground: { type: String, default: null },
+    leaderboardBackground: { type: String, default: null },
   },
   { timestamps: true }
 );

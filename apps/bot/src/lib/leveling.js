@@ -14,6 +14,8 @@ const DEFAULT_LEVEL_CONFIG = {
   levelUpChannelId: null,
   roleStack: true,
   formula: { ...DEFAULT_FORMULA },
+  rankBackground: null,
+  leaderboardBackground: null,
 };
 
 function svgDataUrl(svg) {
@@ -335,9 +337,12 @@ async function buildRankCard(member, profile, config, rank) {
   const avatarUrl = safeAvatarUrl(member.displayAvatarURL({ extension: "png", size: 256 }));
   const status = member.presence?.status ?? "offline";
 
+  const customBg = config?.rankBackground || null;
+
   const buildBuffer = async (avatar, { fallbackBackground = false } = {}) => {
+    const bg = fallbackBackground ? AVATAR_FALLBACK : (customBg || RANK_CARD_BG);
     const card = new canvacord.RankCardBuilder()
-      .setBackground(fallbackBackground ? AVATAR_FALLBACK : RANK_CARD_BG)
+      .setBackground(bg)
       .setAvatar(avatar)
       .setDisplayName(member.displayName)
       .setUsername(member.user.username)
@@ -346,20 +351,22 @@ async function buildRankCard(member, profile, config, rank) {
       .setLevel(profile.level)
       .setRank(rank)
       .setStatus(status)
-      .setOverlay(0.4)
+      .setOverlay(customBg ? 0.35 : 0.45)
       .setTextStyles({ level: "LEVEL", rank: "RANK", xp: "XP" })
       .setStyles({
-        overlay: { style: { background: "linear-gradient(120deg, rgba(6,16,34,0.20), rgba(7,22,40,0.62))" } },
+        overlay: { style: { background: customBg
+          ? "linear-gradient(120deg, rgba(0,0,0,0.15), rgba(0,0,0,0.55))"
+          : "linear-gradient(120deg, rgba(6,16,34,0.18), rgba(7,22,40,0.60))" } },
         avatar: {
-          container: { style: { borderColor: "#48d3ff" } },
+          container: { style: { borderColor: "#5865f2", borderWidth: "4px" } },
         },
         progressbar: {
-          track: { style: { background: "rgba(10, 27, 52, 0.72)" } },
-          thumb: { style: { background: "linear-gradient(90deg, #1e6fff, #7ec8ff)" } },
+          track: { style: { background: "rgba(0,0,0,0.45)" } },
+          thumb: { style: { background: "linear-gradient(90deg, #5865f2, #7ec8ff)" } },
         },
         username: {
-          name: { style: { color: "#f3fbff" } },
-          handle: { style: { color: "#9edfff" } },
+          name: { style: { color: "#ffffff", fontWeight: "700" } },
+          handle: { style: { color: "#b9bbbe" } },
         },
         progress: {
           rank: { value: { style: { color: "#7ec8ff" } } },
@@ -381,7 +388,7 @@ async function buildRankCard(member, profile, config, rank) {
   return new AttachmentBuilder(buffer, { name: "rank-card.png" });
 }
 
-async function buildLeaderboardCard(guild, rows, { page = 1, totalPages = 1 } = {}) {
+async function buildLeaderboardCard(guild, rows, { page = 1, totalPages = 1, config = null } = {}) {
   const canvacord = getCanvacord();
   if (!canvacord) throw new Error("canvacord unavailable");
   ensureCanvacordFonts(canvacord);
@@ -396,18 +403,22 @@ async function buildLeaderboardCard(guild, rows, { page = 1, totalPages = 1 } = 
   }));
 
   const guildIcon = safeAvatarUrl(guild.iconURL({ extension: "png", size: 128 }));
+  const customLbBg = config?.leaderboardBackground || null;
 
   const buildBuffer = async (inputPlayers, { includeIcon = true, includeBackground = true } = {}) => {
     const header = {
       title: guild.name,
-      subtitle: `Sapphire XP Ladder • Page ${page}/${Math.max(1, totalPages)}`,
+      subtitle: `XP Leaderboard • Page ${page}/${Math.max(1, totalPages)}`,
       image: includeIcon ? guildIcon : AVATAR_FALLBACK,
     };
 
+    const bg = includeBackground ? (customLbBg || LEADERBOARD_BG) : AVATAR_FALLBACK;
+    const bgColor = customLbBg ? "#000000" : "#081327";
+
     const lb = new canvacord.LeaderboardBuilder()
       .setVariant(canvacord.LeaderboardVariants.Horizontal)
-      .setBackground(includeBackground ? LEADERBOARD_BG : AVATAR_FALLBACK)
-      .setBackgroundColor("#081327")
+      .setBackground(bg)
+      .setBackgroundColor(bgColor)
       .setHeader(header)
       .setTextStyles({ level: "LEVEL", xp: "TOTAL XP", rank: "RANK" })
       .setPlayers(inputPlayers);

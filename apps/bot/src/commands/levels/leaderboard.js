@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const {
   getLevelConfig,
   LevelProfile,
@@ -6,6 +6,7 @@ const {
   levelFromXp,
   progressForXp,
   buildLeaderboardCard,
+  SAPPHIRE,
 } = require("./_shared");
 
 module.exports = {
@@ -55,13 +56,14 @@ module.exports = {
     }));
 
     try {
-      const card = await buildLeaderboardCard(interaction.guild, rows, { page, totalPages });
+      const card = await buildLeaderboardCard(interaction.guild, rows, { page, totalPages, config: cfg });
       await interaction.editReply({
         embeds: [
-          buildLevelEmbed(
-            "XP Leaderboard",
-            `Server progression snapshot for **${interaction.guild.name}**.`
-          ).setImage("attachment://leaderboard-card.png"),
+          new EmbedBuilder()
+            .setColor(SAPPHIRE)
+            .setImage("attachment://leaderboard-card.png")
+            .setFooter({ text: `FlynnBot Levels · Page ${page}/${totalPages}` })
+            .setTimestamp(),
         ],
         files: [card],
       });

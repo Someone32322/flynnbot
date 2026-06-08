@@ -1,11 +1,11 @@
-const { SlashCommandBuilder } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } = require("discord.js");
 const {
   getProfileAndComputed,
   progressForXp,
-  progressBar,
   computeRank,
   buildRankCard,
   buildLevelEmbed,
+  SAPPHIRE,
 } = require("./_shared");
 
 module.exports = {
@@ -27,22 +27,29 @@ module.exports = {
 
     try {
       const card = await buildRankCard(member, profile, cfg, rank);
+      // Clean output: canvacord card is the star — no duplicate text progress bar
       await interaction.editReply({
         embeds: [
-          buildLevelEmbed(
-            `${target.username}'s Rank`,
-            `Level **${profile.level}** | XP **${profile.xp}** | Rank **#${rank}**\n${progressBar(progress.ratio)} ${Math.round(progress.ratio * 100)}%`
-          ).setImage("attachment://rank-card.png"),
+          new EmbedBuilder()
+            .setColor(SAPPHIRE)
+            .setImage("attachment://rank-card.png")
+            .setFooter({ text: "FlynnBot Levels" })
+            .setTimestamp(),
         ],
         files: [card],
       });
     } catch {
+      // Fallback embed when card render fails
       await interaction.editReply({
         embeds: [
           buildLevelEmbed(
             `${target.username}'s Rank`,
-            `Level **${profile.level}** | XP **${profile.xp}** | Rank **#${rank}**\n${progressBar(progress.ratio)} ${Math.round(progress.ratio * 100)}%`
-          ),
+            `**Level** ${profile.level}  ·  **XP** ${profile.xp}  ·  **Rank** #${rank}`
+          ).addFields({
+            name: "Progress to next level",
+            value: `${progress.within.toLocaleString()} / ${progress.span.toLocaleString()} XP (${Math.round(progress.ratio * 100)}%)`,
+            inline: false,
+          }),
         ],
       });
     }
